@@ -10,6 +10,7 @@
 
 #define E_MEM_SUCCESS 0
 #define E_MEM_ALLOC   1
+#define E_MEM_FOPEN   2
 
 
 extern int memory_init(void);

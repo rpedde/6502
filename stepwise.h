@@ -49,9 +49,16 @@
 #define PARAM_SP 0x05
 #define PARAM_IP 0x06
 
+/* execute next step
+ */
+#define CMD_NEXT 0x07
+
 /* Terminate the emulator
  */
 #define CMD_STOP     0xFF
+
+
+
 typedef struct dbg_command_t_struct {
     uint8_t cmd;
     uint16_t param1;

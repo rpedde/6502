@@ -17,6 +17,7 @@ static int step_cmd_fd = -1;
 static int step_rsp_fd = -1;
 
 #define STEP_BAD_REG "Bad register specified"
+#define STEP_BAD_FILE "Cannot open file"
 
 void step_return(uint8_t result, uint16_t len, uint8_t *data) {
     dbg_response_t response;
@@ -106,8 +107,11 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
         break;
 
     case CMD_LOAD:
-        memory_load(cmd->param1, (char*)data);
-        step_return(RESPONSE_OK, 0, NULL);
+        if(memory_load(cmd->param1, (char*)data) != E_MEM_SUCCESS) {
+            step_return(RESPONSE_ERROR, strlen(STEP_BAD_FILE)+1, (uint8_t*)STEP_BAD_FILE);
+        } else {
+            step_return(RESPONSE_OK, 0, NULL);
+        }
         break;
 
     case CMD_SET:
@@ -136,6 +140,11 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
             return;
         }
 
+        step_return(RESPONSE_OK, 0, NULL);
+        break;
+
+    case CMD_NEXT:
+        cpu_execute();
         step_return(RESPONSE_OK, 0, NULL);
         break;
 

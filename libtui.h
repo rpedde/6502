@@ -25,6 +25,7 @@ typedef struct window_t_struct {
     int height;
     int borderpair;
     int windowpair;
+    int fullrefresh;
     void (*on_refresh)(void);
 } window_t;
 

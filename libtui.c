@@ -120,6 +120,10 @@ window_t *tui_window(int x, int y, int width, int height, int border,
         width = width - 2;
         pwindow = tui_makewindow(newwin(height, width, y + 1, x + 1));
         pwindow->borderwindow = borderwindow;
+
+        wattron(borderwindow,tui_colorlist[colorset].borderpair);
+        werase(borderwindow);
+        wattroff(borderwindow,tui_colorlist[colorset].borderpair);
     } else {
         pwindow = tui_makewindow(newwin(height, width, y, x));
         pwindow->borderwindow = NULL;
@@ -133,7 +137,9 @@ window_t *tui_window(int x, int y, int width, int height, int border,
     pwindow->windowpair = tui_colorlist[colorset].windowpair;
     wbkgd(pwindow->pcwindow,COLOR_PAIR(pwindow->windowpair));
 
+    pwindow->fullrefresh = 1;
     tui_refresh(pwindow);
+    werase(pwindow->pcwindow);
 
     return pwindow;
 }
@@ -141,8 +147,10 @@ window_t *tui_window(int x, int y, int width, int height, int border,
 void tui_refresh(window_t *pwindow) {
     char *buffer;
 
-    if(pwindow->border) {
+    if((pwindow->border)  && (pwindow->fullrefresh)){
         wattron(pwindow->borderwindow,COLOR_PAIR(pwindow->borderpair));
+
+        werase(pwindow->borderwindow);
 
         /* box(pwindow->pcwindow, '|', '|', '-', '-', '+', '+', '+', '+'); */
         box(pwindow->borderwindow, 0, 0);
@@ -152,13 +160,17 @@ void tui_refresh(window_t *pwindow) {
             mvwprintw(pwindow->borderwindow, 0, ((pwindow->width - strlen(buffer)) / 2) + 1,
                       buffer);
         }
+
         wattroff(pwindow->borderwindow,COLOR_PAIR(pwindow->borderpair));
         wrefresh(pwindow->borderwindow);
     }
 
+    if(pwindow->fullrefresh)
+        werase(pwindow->borderwindow);
+
+    pwindow->fullrefresh=0;
 
     if(pwindow->on_refresh) {
-        werase(pwindow->pcwindow);
         pwindow->on_refresh();
     }
 

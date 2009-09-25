@@ -121,7 +121,7 @@ uint8_t cpu_fetch(void) {
 uint8_t cpu_execute(void) {
     opcode_t *opmap;
     opcode_info_t *opinfo;
-    uint8_t opcode = cpu_fetch();
+    uint8_t opcode;
     uint16_t addr;
     uint8_t value;
     uint8_t t81, t82;     /* temp 8 bit numbers */
@@ -129,8 +129,8 @@ uint8_t cpu_execute(void) {
     int16_t ts161, ts162; /* temp 16 bit signed number */
 
     t82 = t82;
-    opcode = cpu_fetch();
 
+    opcode = cpu_fetch();
     opmap = &cpu_opcode_map[opcode];
     opinfo = &cpu_opcode_info[opmap->opcode_family];
 

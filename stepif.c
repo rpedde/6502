@@ -3,6 +3,9 @@
 #include "stepwise.h"
 #include "6502.h"
 
+#define _INCLUDE_OPCODE_MAP
+#include "opcodes.h"
+
 #define CMD_HEIGHT 10
 #define REGISTER_WIDTH 25
 
@@ -12,11 +15,13 @@ int stepif_cmd_fd = -1;
 int stepif_rsp_fd = -1;
 int stepif_debug_threshold = 2;
 
-#define DISPLAY_MODE_DUMP   0
-#define DISPLAY_MODE_DISASM 1
+#define DISPLAY_MODE_DUMP    0
+#define DISPLAY_MODE_DISASM  1
+#define DISPLAY_MODE_UNKNOWN 2
 
 cpu_t stepif_state;
 int stepif_display_mode;
+int stepif_display_track;
 uint16_t stepif_display_addr;
 
 #define D_FATAL 0
@@ -38,6 +43,7 @@ char xlat[256];
 #define TOK_DISASM      3
 #define TOK_LOAD        4
 #define TOK_SET         5
+#define TOK_NEXT        6
 #define TOK_UNKNOWN   100
 #define TOK_AMBIGUOUS 101
 
@@ -45,9 +51,10 @@ char *tokens[] = {
     "quit",
     "version",
     "dump",
-    "disassemble",
+    "disasm",
     "load",
     "set",
+    "next",
     NULL
 };
 
@@ -271,6 +278,22 @@ void process_command(char *cmd) {
         }
 
         stepif_display_addr = (uint16_t)temp;
+        stepif_display_mode = DISPLAY_MODE_DUMP;
+        tui_refresh(pdisplay);
+        break;
+
+    case TOK_DISASM:
+        if(argc != 2) {
+            stepif_debug(D_ERROR, "Usage: disasm <$addr>\n");
+            break;
+        }
+        if(sscanf(argv[1], "$%x", &temp) != 1) {
+            stepif_debug(D_ERROR, "Bad address format (should be $xxxx)\n");
+            break;
+        }
+
+        stepif_display_addr = (uint16_t)temp;
+        stepif_display_mode = DISPLAY_MODE_DISASM;
         tui_refresh(pdisplay);
         break;
 
@@ -333,12 +356,28 @@ void process_command(char *cmd) {
             tui_putstring(pcommand, "Error setting: %s\n",data);
         }
         tui_refresh(pregisters);
+
+        if((stepif_display_track) && (command.param1 == PARAM_IP) & (stepif_display_mode == DISPLAY_MODE_DISASM)) {
+            stepif_display_addr = command.param2;
+            tui_refresh(pdisplay);
+        }
         break;
 
+    case TOK_NEXT:
+        command.cmd = CMD_NEXT;
+        stepif_command(&command, NULL, &response, &data);
+        tui_refresh(pregisters);
+        if((stepif_display_mode == DISPLAY_MODE_DISASM) && (stepif_display_track)) {
+            stepif_display_addr = stepif_state.ip;
+            tui_refresh(pdisplay);
+        }
+
+        break;
 
     case TOK_AMBIGUOUS:
         tui_putstring(pcommand, "Ambiguous command\n");
         break;
+
     case TOK_UNKNOWN:
     default:
         tui_putstring(pcommand, "Unknown command\n");
@@ -354,7 +393,8 @@ void display_update(void) {
     dbg_response_t response;
     uint8_t *data;
     uint8_t line;
-    uint8_t pos;
+    uint16_t pos;
+    static int last_display_type = DISPLAY_MODE_UNKNOWN;
 
     memset((void*)&command, 0, sizeof(command));
     memset((void*)&response, 0, sizeof(response));
@@ -382,9 +422,90 @@ void display_update(void) {
 
             tui_putstring(pdisplay,"\n");
         }
+    } else if(stepif_display_mode == DISPLAY_MODE_DISASM) {
+        uint8_t opcode;
+        uint8_t b;
+        uint16_t w;
+        int len;
+
+        opcode_t *popcode;
+
+        tui_setpos(pdisplay, 0, 1);
+        line = 0;
+        pos = stepif_display_addr;
+
+        while(line < (pdisplay->height - 2)) {
+            if(stepif_state.ip == pos)
+                tui_putstring(pdisplay, " => ");
+            else
+                tui_putstring(pdisplay, "    ");
+
+            tui_putstring(pdisplay, "%04x: ", pos);
+            opcode = data[pos - stepif_display_addr];
+            b = data[(pos - stepif_display_addr) + 1];
+            w = data[(pos - stepif_display_addr) + 2] << 8 | b;
+
+            popcode = &cpu_opcode_map[opcode];
+            len = cpu_addressing_mode_length[popcode->addressing_mode];
+
+            if(len == 1)
+                tui_putstring(pdisplay, "%02x         ", opcode);
+            else if (len == 2)
+                tui_putstring(pdisplay, "%02x %02x      ", opcode, b);
+            else
+                tui_putstring(pdisplay, "%02x %02x %02x   ", opcode, b, w & 0x00);
+
+            tui_putstring(pdisplay, "%s ", cpu_opcode_mnemonics[popcode->opcode_family]);
+
+            switch(popcode->addressing_mode) {
+            case CPU_ADDR_MODE_IMPLICIT:
+                break;
+            case CPU_ADDR_MODE_ACCUMULATOR:
+                tui_putstring(pdisplay,"A");
+                break;
+            case CPU_ADDR_MODE_IMMEDIATE:
+                tui_putstring(pdisplay, "#$%02x", b);
+                break;
+            case CPU_ADDR_MODE_RELATIVE:
+                tui_putstring(pdisplay, "$%02x", b);
+                break;
+            case CPU_ADDR_MODE_ABSOLUTE:
+                tui_putstring(pdisplay, "$%04x", w);
+                break;
+            case CPU_ADDR_MODE_ABSOLUTE_X:
+                tui_putstring(pdisplay, "$%04x,X", w);
+                break;
+            case CPU_ADDR_MODE_ABSOLUTE_Y:
+                tui_putstring(pdisplay, "$%04x,Y", w);
+                break;
+            case CPU_ADDR_MODE_ZPAGE:
+                tui_putstring(pdisplay, "$%02x", b);
+                break;
+            case CPU_ADDR_MODE_ZPAGE_X:
+                tui_putstring(pdisplay, "$%02x,X", b);
+                break;
+            case CPU_ADDR_MODE_ZPAGE_Y:
+                tui_putstring(pdisplay, "$%02x,Y", b);
+                break;
+            case CPU_ADDR_MODE_INDIRECT:
+                tui_putstring(pdisplay, "($%04x)", w);
+                break;
+            case CPU_ADDR_MODE_IND_X:
+                tui_putstring(pdisplay, "($%04x,X)", w);
+                break;
+            case CPU_ADDR_MODE_IND_Y:
+                tui_putstring(pdisplay, "($%04x),Y)", w);
+                break;
+            }
+
+            pos += len;
+            tui_putstring(pdisplay, "            \n");
+            line++;
+        }
+
+
     }
-
-
+    last_display_type = stepif_display_mode;
     free(data);
 }
 
@@ -434,6 +555,7 @@ int main(int argc, char *argv[]) {
 
     stepif_display_mode = DISPLAY_MODE_DUMP;
     stepif_display_addr = 0x8000;
+    stepif_display_track = 1;
 
     memset((void*)xlat, '.', sizeof(xlat));
     for(pos = ' '; pos <= '~'; pos++)

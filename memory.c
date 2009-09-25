@@ -63,8 +63,8 @@ int memory_load(uint16_t addr, char *file) {
 
     fd = open(file,O_RDONLY);
     if(fd == -1) {
-        perror("open");
-        exit(EXIT_FAILURE);
+        DPRINTF(DBG_ERROR, "Cannot open file %s: %s\n", file, strerror(errno));
+        return E_MEM_FOPEN;
     }
 
     while(1) {

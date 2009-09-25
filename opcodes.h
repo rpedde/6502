@@ -121,6 +121,13 @@ char *cpu_addressing_mode[] = {
     "Indirect X", "Indirect Y"
 };
 
+int cpu_addressing_mode_length[] = {
+    1, 1, 2,
+    2, 2, 2, 2,
+    3, 3, 3, 3,
+    3, 3
+};
+
 typedef struct opcode_info_t_struct {
     char *mnemonic;
     int loads;
