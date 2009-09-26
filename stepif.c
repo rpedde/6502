@@ -393,7 +393,7 @@ void display_update(void) {
     dbg_response_t response;
     uint8_t *data;
     uint8_t line;
-    uint16_t pos;
+    int pos;
     static int last_display_type = DISPLAY_MODE_UNKNOWN;
 
     memset((void*)&command, 0, sizeof(command));
@@ -401,7 +401,12 @@ void display_update(void) {
 
     command.cmd = CMD_READMEM;
     command.param1 = stepif_display_addr;
-    command.param2 = 16 * (pdisplay->height - 2);
+    if(16 * (pdisplay->height - 2) > 0xffff)
+        command.param2 = 0xffff - command.param1;
+    else
+        command.param2 = 16 * (pdisplay->height - 2);
+
+    stepif_debug(D_DEBUG, "Asking for $%04x bytes\n", command.param2);
 
     result = stepif_command(&command, NULL, &response, &data);
     if(response.response_status == RESPONSE_ERROR)
@@ -410,14 +415,22 @@ void display_update(void) {
     if(stepif_display_mode == DISPLAY_MODE_DUMP) {
         tui_setpos(pdisplay, 0, 1);
         for(line = 0; line < (pdisplay->height - 2); line++) {
-            tui_putstring(pdisplay, " %04x: ", stepif_display_addr + (line * 16));
-            for(pos = 0; pos < 16; pos++) {
-                tui_putstring(pdisplay, "%02x %s", data[(line * 16) + pos], pos == 7 ? " " : "");
-            }
-            tui_putstring(pdisplay, "  ");
+            if(stepif_display_addr + (line * 16) <= 0xffff) {
+                tui_putstring(pdisplay, " %04x: ", stepif_display_addr + (line * 16));
+                for(pos = 0; pos < 16; pos++) {
+                    if((line*16 + pos)  < command.param2) {
+                        tui_putstring(pdisplay, "%02x %s", data[(line * 16) + pos], pos == 7 ? " " : "");
+                    } else {
+                        tui_putstring(pdisplay, "   %s", pos == 7 ? " " : "");
+                    }
+                }
+                tui_putstring(pdisplay, "  ");
 
-            for(pos = 0; pos < 16; pos++) {
-                tui_putstring(pdisplay, "%c", xlat[data[(line * 16) + pos]]);
+                for(pos = 0; pos < 16; pos++) {
+                    if((line*16 + pos)  < command.param2) {
+                        tui_putstring(pdisplay, "%c", xlat[data[(line * 16) + pos]]);
+                    }
+                }
             }
 
             tui_putstring(pdisplay,"\n");
@@ -435,6 +448,12 @@ void display_update(void) {
         pos = stepif_display_addr;
 
         while(line < (pdisplay->height - 2)) {
+            if(pos > 0xffff) {
+                tui_putstring(pdisplay, "\n");
+                line++;
+                continue;
+            }
+
             if(stepif_state.ip == pos)
                 tui_putstring(pdisplay, " => ");
             else
@@ -494,12 +513,14 @@ void display_update(void) {
                 tui_putstring(pdisplay, "($%04x,X)", w);
                 break;
             case CPU_ADDR_MODE_IND_Y:
-                tui_putstring(pdisplay, "($%04x),Y)", w);
+                tui_putstring(pdisplay, "($%04x),Y", w);
                 break;
             }
 
             pos += len;
-            tui_putstring(pdisplay, "            \n");
+            if(popcode->opcode_undocumented)
+                tui_putstring(pdisplay, " (!!)");
+            tui_putstring(pdisplay, "\n");
             line++;
         }
 

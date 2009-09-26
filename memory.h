@@ -18,6 +18,6 @@ extern void memory_deinit(void);
 
 extern uint8_t memory_read(uint16_t addr);
 extern void memory_write(uint16_t addr, uint8_t data);
-extern int memory_load(uint16_t addr, char *file);
+extern int memory_load(uint16_t addr, const char *file, int is_rom);
 
 #endif /* _MEMORY_H_ */

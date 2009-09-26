@@ -143,7 +143,7 @@ a                              { return(AREG); }
 {qstring}                      { yylval.string = (char*)&(strdup(yytext)[1]);
                                  yylval.string[strlen(yylval.string) - 1] = '\0';
                                  return(STRING); }
-[A-Za-z0-9_\-]+                { yylval.string = strdup(yytext); return(LABEL); }
+[A-Za-z0-9_]+                  { yylval.string = strdup(yytext); return(LABEL); }
 
 
 .                              { return yytext[0]; }

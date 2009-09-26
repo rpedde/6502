@@ -16,4 +16,9 @@
 
 #include "debug.h"
 
+#ifndef TRUE
+# define TRUE 1
+# define FALSE 0
+#endif
+
 #endif /* _EMULATOR_H_ */

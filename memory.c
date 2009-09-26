@@ -51,10 +51,11 @@ void memory_write(uint16_t addr, uint8_t value) {
     memory_ram[addr] = value;
 }
 
-int memory_load(uint16_t addr, char *file) {
+int memory_load(uint16_t addr, const char *file, int is_rom) {
     uint16_t current_addr = addr;
     ssize_t total_bytes = 0, bytes_read = 0;
     int fd;
+    uint8_t *which_bank = is_rom ? memory_rom : memory_ram;
 
     /* we should really mark up an address table to set this
      * as RAM as well */
@@ -68,7 +69,7 @@ int memory_load(uint16_t addr, char *file) {
     }
 
     while(1) {
-        bytes_read = read(fd, &memory_ram[current_addr], 4096);
+        bytes_read = read(fd, &which_bank[current_addr], 4096);
         if(bytes_read <= 0)
             break;
         current_addr += bytes_read;

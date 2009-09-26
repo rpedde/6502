@@ -1,4 +1,5 @@
-CFLAGS:=-Wall -pedantic -g -O0 -std=c99
+CFLAGS:=-Wall -pedantic -g -O0 -std=c99 -I/sw/include
+LDFLAGS:=-L/sw/lib
 
 EMULATOR_SOURCES=emulator.c memory.c 6502.c debug.c stepwise.c
 EMULATOR_HEADERS=emulator.h memory.h 6502.h debug.h opcodes.h stepwise.h
@@ -13,7 +14,7 @@ STEPIF_OBJS=$(STEPIF_SOURCES:.c=.o)
 all: emulator compiler stepif
 
 emulator: $(EMULATOR_OBJS) $(EMULATOR_HEADERS)
-	$(CC) -o emulator $(LDFLAGS) $(EMULATOR_OBJS)
+	$(CC) -o emulator $(LDFLAGS) $(EMULATOR_OBJS) -lconfig
 
 .c.o:
 	$(CC) -c $(CFLAGS) $<

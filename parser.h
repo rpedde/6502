@@ -82,7 +82,7 @@ typedef union YYSTYPE
     uint8_t opcode;
     value_t *nval;
 }
-/* Line 1489 of yacc.c.  */
+/* Line 1529 of yacc.c.  */
 #line 87 "parser.h"
 	YYSTYPE;
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */

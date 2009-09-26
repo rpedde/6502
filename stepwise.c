@@ -81,13 +81,15 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
         start = cmd->param1;
         len = cmd->param2;
 
+        DPRINTF(DBG_DEBUG,"Attemping to read $%04x bytes\n", len);
+
         memory = (uint8_t*)malloc(len);
         if(!memory) {
             perror("malloc");
             exit(EXIT_FAILURE);
         }
 
-        for(current = start; (current - start) < len; current++) {
+        for(current = start; (current >= start) &&  (current-start < len); current++) {
             memory[current-start] = memory_read(current);
         }
 
@@ -107,7 +109,7 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
         break;
 
     case CMD_LOAD:
-        if(memory_load(cmd->param1, (char*)data) != E_MEM_SUCCESS) {
+        if(memory_load(cmd->param1, (char*)data, 0) != E_MEM_SUCCESS) {
             step_return(RESPONSE_ERROR, strlen(STEP_BAD_FILE)+1, (uint8_t*)STEP_BAD_FILE);
         } else {
             step_return(RESPONSE_OK, 0, NULL);
