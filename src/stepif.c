@@ -3,6 +3,7 @@
 #include <memory.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <string.h>
 
 #include "emulator.h"
 #include "libtui.h"

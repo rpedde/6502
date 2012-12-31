@@ -82,6 +82,10 @@ uint16_t cpu_pull_16(void) {
     return cpu_makeword(lo, hi);
 }
 
+int16_t twos_complement(uint8_t value) {
+    return value & 0x80 ? (value ^ 0xFF) + 1 : value;
+}
+
 /*
  * private
  *
@@ -246,9 +250,11 @@ uint8_t cpu_execute(void) {
             t161 = cpu_state.a + value + cpu_flag(FLAG_C);
             cpu_state.a = t161 & 0xff;
 
+            t162 = twos_complement(cpu_state.a) + twos_complement(value) + cpu_flag(FLAG_C);
+
             cpu_set_flag(FLAG_C, t161 > 0xff);
             cpu_set_flag(FLAG_N, cpu_state.a & 0x80);
-            cpu_set_flag(FLAG_V, (((int16_t)t161) < -128) || (((int16_t)t161) > 127));
+            cpu_set_flag(FLAG_V, ((t162) < -128) || ((t162) > 127));
             cpu_set_flag(FLAG_Z, cpu_state.a == 0);
         }
         break; /* ADC */
@@ -344,7 +350,7 @@ uint8_t cpu_execute(void) {
 
     case CPU_OPCODE_CMP:
         /* A - M :: N Z C */
-        ts161 = cpu_state.a - value - cpu_state.p + cpu_flag(FLAG_C) - 1;
+        ts161 = cpu_state.a - (value + cpu_flag(FLAG_C));
 
         cpu_set_flag(FLAG_Z, ts161 == 0);
         cpu_set_flag(FLAG_C, ts161 >= 0);
@@ -353,7 +359,7 @@ uint8_t cpu_execute(void) {
 
     case CPU_OPCODE_CPX:
         /* X - M :: N Z C */
-        ts161 = cpu_state.x - value - cpu_state.p + cpu_flag(FLAG_C) - 1;
+        ts161 = cpu_state.x - (value + cpu_flag(FLAG_C));
 
         cpu_set_flag(FLAG_Z, ts161 == 0);
         cpu_set_flag(FLAG_C, ts161 >= 0);
@@ -362,7 +368,7 @@ uint8_t cpu_execute(void) {
 
     case CPU_OPCODE_CPY:
         /* Y - M :: N Z C */
-        ts161 = cpu_state.y - value - cpu_state.p + cpu_flag(FLAG_C) - 1;
+        ts161 = cpu_state.y - (value + cpu_flag(FLAG_C));
 
         cpu_set_flag(FLAG_Z, ts161 == 0);
         cpu_set_flag(FLAG_C, ts161 >= 0);
@@ -532,7 +538,7 @@ uint8_t cpu_execute(void) {
             cpu_set_flag(FLAG_Z, cpu_state.a == 0);
         } else {
             /* standard mode */
-            ts161 = cpu_state.a - value - cpu_state.p + cpu_flag(FLAG_C) - 1;
+            ts161 = cpu_state.a - (value + cpu_flag(FLAG_C));
 
             cpu_state.a = ts161 & 0xff;
 
