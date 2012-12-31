@@ -5,6 +5,7 @@
 #include "memory.h"
 #include "6502.h"
 #include "stepwise.h"
+#include "hardware.h"
 
 config_t main_config;
 
@@ -13,10 +14,15 @@ config_t main_config;
 int load_memory(void) {
     config_setting_t *pmemory;
     config_setting_t *pblock;
+    config_setting_t *args;
+    config_setting_t *arg;
+
     int memory_items = 0;
-    const char *file;
-    uint16_t addr;
-    int is_rom=0;
+    int arg_items = 0;
+    char *name;
+    const char *module;
+
+    hw_config_t *hw_config = NULL;
 
     DPRINTF(DBG_INFO, "Loading memory\n");
     pmemory = config_lookup(&main_config, "memory");
@@ -30,19 +36,75 @@ int load_memory(void) {
         memory_items++;
         if(!pblock)
             break;
-        file = config_setting_get_string_elem(pblock,0);
-        is_rom = config_setting_get_int_elem(pblock,1);
-        addr = (uint16_t) config_setting_get_int_elem(pblock,2);
 
-        DPRINTF(DBG_INFO, "Loading '%s' into %s memory at $%04x\n", file, is_rom ? "ROM" : "RAM", addr);
+        name = config_setting_name(pblock);
 
-        if(memory_load(addr, file, is_rom) != E_MEM_SUCCESS) {
-            DPRINTF(DBG_ERROR, "Error loading memory\n");
-            return FALSE;
+        DPRINTF(DBG_INFO, "Found memory element: %s\n", name);
+
+        if(!config_setting_lookup_string(pblock, "module", &module)) {
+            DPRINTF(DBG_FATAL,
+                    "Missing module entry for memory item %s", name);
+            exit(1);
+        }
+
+        DPRINTF(DBG_INFO, "  Module name: %s\n", module);
+        args = config_setting_get_member(pblock, "args");
+
+        if (!args) {
+            hw_config = malloc(sizeof(hw_config_t));
+            if (!hw_config) {
+                DPRINTF(DBG_FATAL, "malloc");
+                exit(1);
+            }
+
+            arg_items = 0;
+        } else {
+            arg_items = config_setting_length(args);
+            DPRINTF(DBG_INFO, "  %d arg items\n", arg_items);
+            hw_config = malloc(sizeof(hw_config_t) +
+                               (arg_items * sizeof(hw_config_item_t)));
+            if(!hw_config) {
+                DPRINTF(DBG_FATAL, "malloc");
+                exit(1);
+            }
+        }
+
+        /* now walk the args and put them in a
+           config struct */
+        hw_config->config_items = arg_items;
+        for(int x = 0; x < arg_items; x++) {
+            arg = config_setting_get_elem(args, x);
+            const char *key = config_setting_name(arg);
+            if(!key) {
+                DPRINTF(DBG_FATAL, "Bad arg key in %s", name);
+                exit(1);
+            }
+            const char *value = NULL;
+            value = config_setting_get_string(arg);
+
+            if(!value) {
+                DPRINTF(DBG_FATAL, "Bad arg value for %s in %s",
+                        key, name);
+                exit(1);
+            }
+
+            hw_config->item[x].key = key;
+            hw_config->item[x].value = value;
+
+            DPRINTF(DBG_INFO, "    %s => %s\n", key, value);
+        }
+
+        /* now, let's load it */
+        memory_load(module, hw_config);
+
+        if (hw_config) {
+            free(hw_config);
+            hw_config = NULL;
         }
     }
 
     DPRINTF(DBG_INFO, "Memory loaded\n");
+    exit(1);
     return TRUE;
 }
 

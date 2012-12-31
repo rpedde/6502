@@ -2,82 +2,130 @@
  *
  */
 
-#include "emulator.h"
+#include <stdio.h>
+#include <errno.h>
+#include <dlfcn.h>
 
+#include "emulator.h"
 #include "memory.h"
 
-uint8_t *memory_ram = NULL;
-uint8_t *memory_rom = NULL;
+typedef struct memory_list_t {
+    hw_reg_t *hw_reg;
+    struct memory_list_t *pnext;
+} memory_list_t;
+
+memory_list_t memory_list;
+
+typedef struct module_list_t {
+    char *module_name;
+    hw_reg_t *(*init)(hw_config_t *);
+    void *handle;
+    struct module_list_t *pnext;
+} module_list_t;
+
+module_list_t memory_modules;
+
+module_list_t *get_load_module(char *module) {
+    module_list_t *pentry = memory_modules.pnext;
+
+    while(pentry) {
+        if(strcmp(pentry->module_name, module) == 0)
+            break;
+
+        pentry = pentry->pnext;
+    }
+
+    if(!pentry) {
+        /* we have to load the module */
+        pentry = malloc(sizeof(module_list_t));
+        if(!pentry) {
+            perror("malloc");
+            exit(1);
+        }
+
+        pentry->module_name = strdup(module);
+        pentry->handle = dlopen(module, RTLD_LAZY | RTLD_LOCAL);
+        if(!pentry->handle) {
+            perror(module);
+            exit(1);
+        }
+
+        pentry->init = dlsym(pentry->handle, "init");
+        if(!pentry->init) {
+            exit(1);
+        }
+
+        pentry->pnext = memory_modules.pnext;
+        memory_modules.pnext = pentry;
+    }
+
+    return pentry;
+}
+
 
 int memory_init(void) {
-    memory_ram = (uint8_t*)malloc(65536);
-    memory_rom = (uint8_t*)malloc(65536);
+    memory_list.pnext = NULL;
+    memory_modules.pnext = NULL;
 
-    if((!memory_ram) || (!memory_rom))
-        return E_MEM_ALLOC;
-
-    /* default poweron at 0x8000 */
-    memory_rom[0xfffc] = 0x00;
-    memory_rom[0xfffd] = 0x80;
-
-    /* now we are free to load any memory pages from disk */
+    /* now we are free to load any memory modules from disk */
     return E_MEM_SUCCESS;
 }
 
 void memory_deinit(void) {
-    if(memory_ram) free(memory_ram);
-    if(memory_rom) free(memory_rom);
+    memory_list_t *current = memory_list.pnext;
+
+    while(current) {
+        /* unload all the modules */
+        current = current->pnext;
+    }
 }
 
 uint8_t memory_read(uint16_t addr) {
-    uint8_t *which_bank = memory_ram;
+    memory_list_t *current = memory_list.pnext;
 
-    /* this is hackish as crap */
-    if (addr >= 0xa000 && addr <= 0xbfff) /* BASIC ROM */
-        which_bank = memory_rom;
-    if (addr >= 0xe000)                   /* Kernal ROM */
-        which_bank = memory_rom;
-    if (addr >= 0xd000 && addr <= 0xdfff) /* Character generator */
-        which_bank = memory_rom;
+    while(current) {
+        /* find the module associated with
+           this memory range */
+        current = current->pnext;
+    }
 
-    /* The bank chooser should be hardware, and rom files
-     * should be loadable from disk
-     */
-
-    return which_bank[addr];
+    return 0;
 }
 
 void memory_write(uint16_t addr, uint8_t value) {
-    memory_ram[addr] = value;
+    memory_list_t *current = memory_list.pnext;
+
+    while(current) {
+        /* find the module associated with
+           this memory range */
+        current = current->pnext;
+    }
 }
 
-int memory_load(uint16_t addr, const char *file, int is_rom) {
-    uint16_t current_addr = addr;
-    ssize_t total_bytes = 0, bytes_read = 0;
-    int fd;
-    uint8_t *which_bank = is_rom ? memory_rom : memory_ram;
+int memory_load(char *module, hw_config_t *config) {
+    memory_list_t *modentry = NULL;
+    module_list_t *pmodule = NULL;
 
-    /* we should really mark up an address table to set this
-     * as RAM as well */
+    DPRINTF(DBG_DEBUG, "Loading module %s\n", module);
 
-    DPRINTF(DBG_DEBUG,"Loading %s at $%04x\n", file, addr);
-
-    fd = open(file,O_RDONLY);
-    if(fd == -1) {
-        DPRINTF(DBG_ERROR, "Cannot open file %s: %s\n", file, strerror(errno));
-        return E_MEM_FOPEN;
+    modentry = malloc(sizeof(memory_list_t));
+    if(!modentry) {
+        EPRINTF(DBG_FATAL, "malloc");
+        exit(1);
     }
 
-    while(1) {
-        bytes_read = read(fd, &which_bank[current_addr], 4096);
-        if(bytes_read <= 0)
-            break;
-        current_addr += bytes_read;
-        total_bytes += bytes_read;
+    memset(&modentry, 0x00, sizeof(modentry));
+    pmodule = get_load_module(module);
+
+    modentry->hw_reg = pmodule->init(config);
+
+    if(modentry->hw_reg == NULL) {
+        EPRINTF(DBG_FATAL, "Module %s init failed", module);
+        exit(1);
     }
 
-    DPRINTF(DBG_DEBUG, "Loaded %d bytes\n", total_bytes);
-    close(fd);
+    modentry->pnext = memory_list.pnext;
+    memory_list.pnext = modentry;
 
     return E_MEM_SUCCESS;
 }

@@ -108,13 +108,15 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
         step_return(RESPONSE_OK, 0, NULL);
         break;
 
-    case CMD_LOAD:
-        if(memory_load(cmd->param1, (char*)data, 0) != E_MEM_SUCCESS) {
-            step_return(RESPONSE_ERROR, strlen(STEP_BAD_FILE)+1, (uint8_t*)STEP_BAD_FILE);
-        } else {
-            step_return(RESPONSE_OK, 0, NULL);
-        }
-        break;
+        /* FIXME: rewrite by loading the file and bytewise writing it */
+
+    /* case CMD_LOAD: */
+    /*     if(memory_load(cmd->param1, (char*)data, 0) != E_MEM_SUCCESS) { */
+    /*         step_return(RESPONSE_ERROR, strlen(STEP_BAD_FILE)+1, (uint8_t*)STEP_BAD_FILE); */
+    /*     } else { */
+    /*         step_return(RESPONSE_OK, 0, NULL); */
+    /*     } */
+    /*     break; */
 
     case CMD_SET:
         switch(cmd->param1) {

@@ -1,5 +1,6 @@
-CFLAGS:=-Wall -pedantic -g -O0 -std=c99 -I/sw/include
-LDFLAGS:=-L/sw/lib
+CFLAGS:=-Wall -pedantic -g -O0 -std=c99 -I/opt/local/include
+LDFLAGS:=-L/opt/local/lib
+CC=gcc
 
 EMULATOR_SOURCES=emulator.c memory.c 6502.c debug.c stepwise.c
 EMULATOR_HEADERS=emulator.h memory.h 6502.h debug.h opcodes.h stepwise.h
@@ -13,11 +14,15 @@ STEPIF_OBJS=$(STEPIF_SOURCES:.c=.o)
 
 all: emulator compiler stepif
 
-emulator: $(EMULATOR_OBJS) $(EMULATOR_HEADERS)
+emulator: $(EMULATOR_OBJS) $(EMULATOR_HEADERS) hardware
 	$(CC) -o emulator $(LDFLAGS) $(EMULATOR_OBJS) -lconfig
 
 .c.o:
 	$(CC) -c $(CFLAGS) $<
+
+.PHONY: hardware
+hardware:
+	CC="$(CC)" CFLAGS="$(CFLAGS) -I.." LDFLAGS="$(LDFLAGS)" make -C hardware
 
 clean:
 	rm -f emulator stepif
@@ -25,6 +30,7 @@ clean:
 	rm -f $(STEPIF_OBJS)
 	rm -f $(EMULATOR_OBJS)
 	rm -f $(COMPILER_OBJS)
+	make -C hardware clean
 
 parser.c: parser.y opcodes.h
 	yacc -d -o parser.c parser.y
