@@ -1,3 +1,9 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <memory.h>
+#include <fcntl.h>
+#include <unistd.h>
+
 #include "emulator.h"
 #include "libtui.h"
 #include "stepwise.h"
@@ -14,6 +20,7 @@
 int stepif_cmd_fd = -1;
 int stepif_rsp_fd = -1;
 int stepif_debug_threshold = 2;
+int stepif_running = 0;
 
 #define DISPLAY_MODE_DUMP    0
 #define DISPLAY_MODE_DISASM  1
@@ -44,6 +51,8 @@ char xlat[256];
 #define TOK_LOAD        4
 #define TOK_SET         5
 #define TOK_NEXT        6
+#define TOK_BREAK       7
+#define TOK_RUN         8
 #define TOK_UNKNOWN   100
 #define TOK_AMBIGUOUS 101
 
@@ -55,8 +64,63 @@ char *tokens[] = {
     "load",
     "set",
     "next",
+    "break",
+    "run",
     NULL
 };
+
+typedef struct breakpoint_list_t {
+    uint16_t breakpoint;
+    struct breakpoint_list_t *pnext;
+} breakpoint_list_t;
+
+breakpoint_list_t breakpoint_list;
+
+int breakpoint_add(uint16_t addr) {
+    breakpoint_list_t *pnew;
+
+    pnew = malloc(sizeof(breakpoint_list_t));
+    if(!pnew) {
+        perror("malloc");
+        exit(1);
+    }
+
+    pnew->breakpoint = addr;
+    pnew->pnext = breakpoint_list.pnext;
+    breakpoint_list.pnext = pnew;
+
+    return 1;
+}
+
+int breakpoint_remove(uint16_t addr) {
+    breakpoint_list_t *last, *current;
+
+    last = &breakpoint_list;
+    current = last->pnext;
+
+    while(current) {
+        if (current->breakpoint == addr) {
+            last->pnext = current->pnext;
+            free(current);
+            return 1;
+        }
+        last = current;
+        current = current->pnext;
+    }
+
+    return 0;
+}
+
+int breakpoint_is_set(uint16_t addr) {
+    breakpoint_list_t *current = breakpoint_list.pnext;
+
+    while(current) {
+        if (current->breakpoint == addr)
+            return 1;
+        current = current->pnext;
+    }
+    return 0;
+}
 
 
 int get_token(char *string) {
@@ -357,7 +421,7 @@ void process_command(char *cmd) {
         }
         tui_refresh(pregisters);
 
-        if((stepif_display_track) && (command.param1 == PARAM_IP) & (stepif_display_mode == DISPLAY_MODE_DISASM)) {
+        if((stepif_display_track) && (command.param1 == PARAM_IP) && (stepif_display_mode == DISPLAY_MODE_DISASM)) {
             stepif_display_addr = command.param2;
             tui_refresh(pdisplay);
         }
@@ -372,6 +436,39 @@ void process_command(char *cmd) {
             tui_refresh(pdisplay);
         }
 
+        if (breakpoint_is_set(stepif_state.ip) && stepif_running) {
+            stepif_running = 0;
+            tui_putstring(pcommand, "Breakpoint reached.  Stopping.\n");
+        }
+        break;
+
+    case TOK_BREAK:
+        if(argc != 2) {
+            stepif_debug(D_ERROR, "Usage: break <$addr>\n");
+            break;
+        }
+
+        if(sscanf(argv[1], "$%x", &temp) != 1) {
+            stepif_debug(D_ERROR, "Bad address format (should be $xxxx)\n");
+            break;
+        }
+
+        if (breakpoint_is_set((uint16_t)temp)) {
+            breakpoint_remove((uint16_t)temp);
+            tui_putstring(pcommand, "Breakpoint unset\n");
+        } else {
+            breakpoint_add((uint16_t)temp);
+            tui_putstring(pcommand, "Breakpoint set\n");
+        }
+
+        if((stepif_display_track) && (stepif_display_mode == DISPLAY_MODE_DISASM)) {
+            tui_refresh(pdisplay);
+        }
+        break;
+
+    case TOK_RUN:
+        stepif_running = 1;
+        tui_putstring(pcommand, "Free-running\n");
         break;
 
     case TOK_AMBIGUOUS:
@@ -439,6 +536,7 @@ void display_update(void) {
         uint8_t opcode;
         uint8_t b;
         uint16_t w;
+        uint16_t rel;
         int len;
 
         opcode_t *popcode;
@@ -454,18 +552,25 @@ void display_update(void) {
                 continue;
             }
 
-            if(stepif_state.ip == pos)
-                tui_putstring(pdisplay, " => ");
+            if(breakpoint_is_set(pos))
+                tui_putstring(pdisplay, " *");
             else
-                tui_putstring(pdisplay, "    ");
+                tui_putstring(pdisplay, "  ");
 
-            tui_putstring(pdisplay, "%04x: ", pos);
+            if(stepif_state.ip == pos)
+                tui_putstring(pdisplay, "=> ");
+            else
+                tui_putstring(pdisplay, "   ");
+
+            tui_putstring(pdisplay, "%04X: ", pos);
             opcode = data[pos - stepif_display_addr];
             b = data[(pos - stepif_display_addr) + 1];
             w = data[(pos - stepif_display_addr) + 2] << 8 | b;
 
             popcode = &cpu_opcode_map[opcode];
             len = cpu_addressing_mode_length[popcode->addressing_mode];
+
+            rel = b & 0x80 ? pos - ((b + len -1) ^ 0xFF) : pos + b + len;
 
             if(len == 1)
                 tui_putstring(pdisplay, "%02x         ", opcode);
@@ -486,7 +591,7 @@ void display_update(void) {
                 tui_putstring(pdisplay, "#$%02x", b);
                 break;
             case CPU_ADDR_MODE_RELATIVE:
-                tui_putstring(pdisplay, "$%02x", b);
+                tui_putstring(pdisplay, "$%02x", rel);
                 break;
             case CPU_ADDR_MODE_ABSOLUTE:
                 tui_putstring(pdisplay, "$%04x", w);
@@ -574,6 +679,7 @@ int main(int argc, char *argv[]) {
     char *fifo_path;
     int pos;
 
+    breakpoint_list.pnext = NULL;
     stepif_display_mode = DISPLAY_MODE_DUMP;
     stepif_display_addr = 0x8000;
     stepif_display_track = 1;
@@ -616,12 +722,16 @@ int main(int argc, char *argv[]) {
     tui_inputwindow(pcommand);
 
     while(1) {
-        tui_putstring(pcommand, "> ");
-        tui_getstring(pcommand, buffer, sizeof(buffer));
-        if(strcmp(buffer,"quit") == 0)
-            break;
+        if(stepif_running) {
+            process_command("next");
+        } else {
+            tui_putstring(pcommand, "> ");
+            tui_getstring(pcommand, buffer, sizeof(buffer));
+            if(strcmp(buffer,"quit") == 0)
+                break;
 
-        process_command(buffer);
+            process_command(buffer);
+        }
     }
 
     exit(EXIT_SUCCESS);

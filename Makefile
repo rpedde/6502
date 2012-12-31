@@ -1,5 +1,5 @@
-CFLAGS:=-Wall -pedantic -g -O0 -std=c99 -I/opt/local/include
-LDFLAGS:=-L/opt/local/lib
+CFLAGS:=-Wall -pedantic -g -O0 -std=c99 -I/opt/local/include -D_BSD_SOURCE -D_GNU_SOURCE
+LDFLAGS:=-L/opt/local/lib -ldl
 CC=gcc
 
 EMULATOR_SOURCES=emulator.c memory.c 6502.c debug.c stepwise.c

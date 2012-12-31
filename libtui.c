@@ -2,11 +2,16 @@
  *
  */
 
-#include "emulator.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <string.h>
 
 #define NCURSES_OPAQUE 0
 #include <curses.h>
 
+#include "emulator.h"
 #include "libtui.h"
 
 static int tui_initialized = 0;

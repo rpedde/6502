@@ -5,6 +5,7 @@
 #ifndef _STEPWISE_H_
 #define _STEPWISE_H_
 
+#include <stdint.h>
 
 /* NOP relies with one byte of magic data:
  * 0xEA

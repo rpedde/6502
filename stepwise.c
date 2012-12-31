@@ -2,7 +2,16 @@
  *
  */
 
-#include "emulator.h"
+#include <stdlib.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <errno.h>
+#include <string.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+
 #include "stepwise.h"
 #include "debug.h"
 #include "6502.h"

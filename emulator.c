@@ -1,7 +1,17 @@
-#include "emulator.h"
 
+#include <errno.h>
+#include <stdio.h>
+#include <fcntl.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <getopt.h>
 #include <libconfig.h>
+#include <getopt.h>
 
+#include "emulator.h"
+#include "debug.h"
 #include "memory.h"
 #include "6502.h"
 #include "stepwise.h"

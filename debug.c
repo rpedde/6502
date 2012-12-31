@@ -2,6 +2,9 @@
  *
  */
 
+#include <stdio.h>
+#include <stdarg.h>
+
 #include "emulator.h"
 #include "debug.h"
 

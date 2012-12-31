@@ -2,9 +2,15 @@
  *
  */
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <memory.h>
+#include <string.h>
+
 #include "emulator.h"
 #include "memory.h"
 #include "6502.h"
+#include "debug.h"
 
 #define _INCLUDE_OPCODE_MAP
 #include "opcodes.h"
@@ -130,8 +136,6 @@ uint8_t cpu_execute(void) {
     uint16_t t161, t162;  /* temp 16 bit numbers */
     int16_t ts161, ts162; /* temp 16 bit signed number */
 
-    t82 = t82;
-
     opcode = cpu_fetch();
     opmap = &cpu_opcode_map[opcode];
     opinfo = &cpu_opcode_info[opmap->opcode_family];
@@ -175,7 +179,7 @@ uint8_t cpu_execute(void) {
         if(addr & 0x80) {
             addr--;
             addr ^= 0xFF;
-            addr += cpu_state.ip;
+            addr = cpu_state.ip - addr;
         } else {
             addr = cpu_state.ip + addr;
         }
@@ -244,7 +248,7 @@ uint8_t cpu_execute(void) {
 
             cpu_set_flag(FLAG_C, t161 > 0xff);
             cpu_set_flag(FLAG_N, cpu_state.a & 0x80);
-            cpu_set_flag(FLAG_V, (((int16_t)t162) < -128) || (((int16_t)t162) > 127));
+            cpu_set_flag(FLAG_V, (((int16_t)t161) < -128) || (((int16_t)t161) > 127));
             cpu_set_flag(FLAG_Z, cpu_state.a == 0);
         }
         break; /* ADC */
@@ -530,9 +534,11 @@ uint8_t cpu_execute(void) {
             /* standard mode */
             ts161 = cpu_state.a - value - cpu_state.p + cpu_flag(FLAG_C) - 1;
 
+            cpu_state.a = ts161 & 0xff;
+
             cpu_set_flag(FLAG_C, ts161 >= 0);
             cpu_set_flag(FLAG_N, ts161 < 0);
-            cpu_set_flag(FLAG_V, ((ts162) < -128) || ((ts162) > 127));
+            cpu_set_flag(FLAG_V, ((ts161) < -128) || ((ts161) > 127));
             cpu_set_flag(FLAG_Z, cpu_state.a == 0);
         }
         break; /* SBC */

@@ -3,9 +3,13 @@
  */
 
 #include <stdio.h>
+#include <unistd.h>
+#include <string.h>
+#include <stdlib.h>
 #include <errno.h>
 #include <dlfcn.h>
 
+#include "debug.h"
 #include "emulator.h"
 #include "memory.h"
 
