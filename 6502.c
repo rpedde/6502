@@ -61,7 +61,7 @@ void cpu_push_8(uint8_t val) {
 }
 
 void cpu_push_16(uint16_t val) {
-    cpu_push_8(val & 0xFF00 >> 8);
+    cpu_push_8((val & 0xFF00) >> 8);
     cpu_push_8(val & 0xFF);
 }
 
@@ -71,7 +71,9 @@ uint8_t cpu_pull_8(void) {
 }
 
 uint16_t cpu_pull_16(void) {
-    return cpu_makeword(cpu_pull_8(), cpu_pull_8());
+    uint8_t lo = cpu_pull_8();
+    uint8_t hi = cpu_pull_8();
+    return cpu_makeword(lo, hi);
 }
 
 /*
@@ -152,7 +154,10 @@ uint8_t cpu_execute(void) {
     case CPU_ADDR_MODE_ABSOLUTE_X:
     case CPU_ADDR_MODE_ABSOLUTE_Y:
     case CPU_ADDR_MODE_INDIRECT:
-        addr = cpu_makeword(cpu_fetch(),cpu_fetch());
+        t81 = cpu_fetch();
+        t82 = cpu_fetch();
+        addr = cpu_makeword(t81, t82);
+        DPRINTF(DBG_INFO,"addr for absolute: $%04x\n", addr);
         break;
     default:
         DPRINTF(DBG_FATAL,"Unsupported indexing mode\n");
@@ -160,8 +165,6 @@ uint8_t cpu_execute(void) {
     }
 
     /* get *real* addr based on indexing mode */
-
-
     switch(opmap->addressing_mode) {
     case CPU_ADDR_MODE_IMMEDIATE:
     case CPU_ADDR_MODE_IMPLICIT:

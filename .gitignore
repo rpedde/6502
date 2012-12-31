@@ -1,0 +1,7 @@
+*.o
+*~
+compiler
+emulator
+stepif
+lexer.c
+parser.c

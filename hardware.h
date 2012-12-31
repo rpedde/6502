@@ -20,12 +20,11 @@
 
 #include <stdint.h>
 
-#define HW_FAMILY_VIDEO  0
-#define HW_FAMILY_IO     1
-#define HW_FAMILY_SERIAL 2
-#define HW_FAMILY_RAM    3
-#define HW_FAMILY_ROM    4
-#define HW_FAMILY_OTHER  5
+#define HW_FAMILY_VIDEO  0x01
+#define HW_FAMILY_IO     0x02
+#define HW_FAMILY_SERIAL 0x04
+#define HW_FAMILY_MEMORY 0x08
+#define HW_FAMILY_OTHER  0x10
 
 #define MEMOP_READ       0
 #define MEMOP_WRITE      1

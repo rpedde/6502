@@ -19,6 +19,8 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdlib.h>
+
 
 #include "hardware.h"
 #include "hw-common.h"
@@ -39,6 +41,7 @@ char *config_get(hw_config_t *config, char *key) {
 int config_get_uint16(hw_config_t *config, char *key, uint16_t *value) {
     char *str_value;
     char *fmt = "%d";
+    int interim_value;
 
     str_value = config_get(config, key);
     if(!str_value)
@@ -46,11 +49,15 @@ int config_get_uint16(hw_config_t *config, char *key, uint16_t *value) {
 
     if(str_value[0] == 'x')
         fmt = "x%x";
+    else if (strncmp(str_value, "0x", 2) == 0)
+        fmt = "0x%x";
     else if (str_value[0] == '0')
         fmt = "%o";
 
-    if (sscanf(str_value, fmt, value) == 1)
+    if(sscanf(str_value, fmt, &interim_value) == 1) {
+        *value = (uint16_t)interim_value;
         return 1;
+    }
 
-    return 0;
+    exit(1);
 }

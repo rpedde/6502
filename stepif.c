@@ -472,7 +472,7 @@ void display_update(void) {
             else if (len == 2)
                 tui_putstring(pdisplay, "%02x %02x      ", opcode, b);
             else
-                tui_putstring(pdisplay, "%02x %02x %02x   ", opcode, b, w & 0x00);
+                tui_putstring(pdisplay, "%02x %02x %02x   ", opcode, b, w >> 8);
 
             tui_putstring(pdisplay, "%s ", cpu_opcode_mnemonics[popcode->opcode_family]);
 

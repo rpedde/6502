@@ -104,7 +104,6 @@ int load_memory(void) {
     }
 
     DPRINTF(DBG_INFO, "Memory loaded\n");
-    exit(1);
     return TRUE;
 }
 

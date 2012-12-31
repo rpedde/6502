@@ -19,6 +19,6 @@ extern void memory_deinit(void);
 
 extern uint8_t memory_read(uint16_t addr);
 extern void memory_write(uint16_t addr, uint8_t data);
-extern int memory_load(char *module, hw_config_t *config);
+extern int memory_load(const char *module, hw_config_t *config);
 
 #endif /* _MEMORY_H_ */

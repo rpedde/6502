@@ -1,4 +1,4 @@
-HARDWARE_SOURCES=ram.c
+HARDWARE_SOURCES=memory.c
 HARDWARE_OBJS=$(HARDWARE_SOURCES:.c=.so)
 SHARED_DEPS=hw-common.c hw-common.h
 SHARED_SOURCES=hw-common.c

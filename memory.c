@@ -25,7 +25,7 @@ typedef struct module_list_t {
 
 module_list_t memory_modules;
 
-module_list_t *get_load_module(char *module) {
+module_list_t *get_load_module(const char *module) {
     module_list_t *pentry = memory_modules.pnext;
 
     while(pentry) {
@@ -86,9 +86,19 @@ uint8_t memory_read(uint16_t addr) {
     while(current) {
         /* find the module associated with
            this memory range */
+        for(int x=0; x < current->hw_reg->remapped_regions; x++) {
+            if((current->hw_reg->remap[x].mem_start <= addr) &&
+               (current->hw_reg->remap[x].mem_end >= addr) &&
+               (current->hw_reg->remap[x].readable == 1)) {
+                return current->hw_reg->memop(current->hw_reg, addr,
+                                              MEMOP_READ, 0);
+            }
+        }
+
         current = current->pnext;
     }
 
+    EPRINTF(DBG_ERROR, "No readable memory at addr %x\n", addr);
     return 0;
 }
 
@@ -98,11 +108,22 @@ void memory_write(uint16_t addr, uint8_t value) {
     while(current) {
         /* find the module associated with
            this memory range */
+        for(int x=0; x < current->hw_reg->remapped_regions; x++) {
+            if((current->hw_reg->remap[x].mem_start <= addr) &&
+               (current->hw_reg->remap[x].mem_end >= addr) &&
+               (current->hw_reg->remap[x].writable == 1)) {
+                current->hw_reg->memop(current->hw_reg, addr,
+                                       MEMOP_WRITE, value);
+                return;
+            }
+        }
+
         current = current->pnext;
     }
+    EPRINTF(DBG_ERROR, "No writable memory at addr %x\n", addr);
 }
 
-int memory_load(char *module, hw_config_t *config) {
+int memory_load(const char *module, hw_config_t *config) {
     memory_list_t *modentry = NULL;
     module_list_t *pmodule = NULL;
 
@@ -114,7 +135,7 @@ int memory_load(char *module, hw_config_t *config) {
         exit(1);
     }
 
-    memset(&modentry, 0x00, sizeof(modentry));
+    memset(modentry, 0x00, sizeof(modentry));
     pmodule = get_load_module(module);
 
     modentry->hw_reg = pmodule->init(config);
@@ -123,6 +144,12 @@ int memory_load(char *module, hw_config_t *config) {
         EPRINTF(DBG_FATAL, "Module %s init failed", module);
         exit(1);
     }
+
+    DPRINTF(DBG_DEBUG, "Loaded module at 0x%x - 0x%x.  Read: %d, Write: %d\n",
+            modentry->hw_reg->remap[0].mem_start,
+            modentry->hw_reg->remap[0].mem_end,
+            modentry->hw_reg->remap[0].readable,
+            modentry->hw_reg->remap[0].writable);
 
     modentry->pnext = memory_list.pnext;
     memory_list.pnext = modentry;
