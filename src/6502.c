@@ -33,7 +33,10 @@ void cpu_init(void) {
     memset((void*)&cpu_state, 0, sizeof(cpu_state));
     cpu_state.ip = cpu_makeword(memory_read(0xfffc), memory_read(0xfffd));
     cpu_state.sp = 0xff;
-
+    cpu_state.p = 0x20;
+    cpu_set_flag(FLAG_I,1);
+    cpu_set_flag(FLAG_D,0);
+    cpu_set_flag(FLAG_B,1); /* sim65 does this, not sure if it's right */
     /* now we're ready to roll */
 }
 
@@ -317,9 +320,13 @@ uint8_t cpu_execute(void) {
         cpu_state.ip++;
         cpu_state.irq |= FLAG_IRQ;
         cpu_set_flag(FLAG_B,1);
-        /* cpu_set_flag(FLAG_I,1);
-         * no, set this up when we actually fire off the interrupt, after
-         * pushing flags */
+
+        cpu_push_16(cpu_state.ip);
+        cpu_push_8(cpu_state.p);
+
+        /* as with NMI, disable interrupts in the handler */
+        cpu_set_flag(FLAG_I, 1);
+        cpu_state.ip = cpu_makeword(memory_read(0xfffe), memory_read(0xffff));
         break;
 
     case CPU_OPCODE_BVC:
@@ -350,7 +357,7 @@ uint8_t cpu_execute(void) {
 
     case CPU_OPCODE_CMP:
         /* A - M :: N Z C */
-        ts161 = cpu_state.a - (value + cpu_flag(FLAG_C));
+        ts161 = cpu_state.a - value;  // - (value + cpu_flag(FLAG_C))
 
         cpu_set_flag(FLAG_Z, ts161 == 0);
         cpu_set_flag(FLAG_C, ts161 >= 0);
@@ -359,7 +366,7 @@ uint8_t cpu_execute(void) {
 
     case CPU_OPCODE_CPX:
         /* X - M :: N Z C */
-        ts161 = cpu_state.x - (value + cpu_flag(FLAG_C));
+        ts161 = cpu_state.x - value;
 
         cpu_set_flag(FLAG_Z, ts161 == 0);
         cpu_set_flag(FLAG_C, ts161 >= 0);
@@ -368,7 +375,7 @@ uint8_t cpu_execute(void) {
 
     case CPU_OPCODE_CPY:
         /* Y - M :: N Z C */
-        ts161 = cpu_state.y - (value + cpu_flag(FLAG_C));
+        ts161 = cpu_state.y - value;
 
         cpu_set_flag(FLAG_Z, ts161 == 0);
         cpu_set_flag(FLAG_C, ts161 >= 0);
@@ -484,7 +491,11 @@ uint8_t cpu_execute(void) {
         break;
 
     case CPU_OPCODE_PLP:
-        cpu_state.p = cpu_pull_8();
+        /* flag 0x20 is not overwritten by PLP */
+        t81 = cpu_pull_8();
+
+        cpu_state.p &= (FLAG_UNUSED | FLAG_B);
+        cpu_state.p |= (t81 & ~(FLAG_UNUSED | FLAG_B));
         break;
 
     case CPU_OPCODE_ROL:

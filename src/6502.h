@@ -23,7 +23,7 @@ extern cpu_t cpu_state;
 
 #define FLAG_N  0x80
 #define FLAG_V  0x40
-      /* no flag */
+#define FLAG_UNUSED 0x20
 #define FLAG_B  0x10
 #define FLAG_D  0x08
 #define FLAG_I  0x04
