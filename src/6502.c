@@ -177,6 +177,7 @@ uint8_t cpu_execute(void) {
 
     /* get *real* addr based on indexing mode */
     switch(opmap->addressing_mode) {
+    case CPU_ADDR_MODE_ACCUMULATOR:
     case CPU_ADDR_MODE_IMMEDIATE:
     case CPU_ADDR_MODE_IMPLICIT:
     case CPU_ADDR_MODE_ZPAGE:
@@ -276,10 +277,17 @@ uint8_t cpu_execute(void) {
     case CPU_OPCODE_ASL:
         /* C <- [76543210] <- 0 :: N Z C */
         t161 = cpu_state.a << 1;
-        cpu_state.a = t161 & 0xff;
-        cpu_set_flag(FLAG_N, cpu_state.a & 0x80);
-        cpu_set_flag(FLAG_Z, cpu_state.a == 0);
+        t81 = t161 & 0xff;
+        cpu_set_flag(FLAG_N, t81 & 0x80);
+        cpu_set_flag(FLAG_Z, t81 == 0);
         cpu_set_flag(FLAG_C, t161 & 0x0100);
+
+        /* result goes in accumulator or memory */
+        if (opmap->addressing_mode == CPU_ADDR_MODE_ACCUMULATOR) {
+            cpu_state.a = t81;
+        } else {
+            memory_write(addr, t81);
+        }
         break;
 
     case CPU_OPCODE_BCC:
@@ -475,8 +483,19 @@ uint8_t cpu_execute(void) {
     case CPU_OPCODE_LSR:
         /* 0 -> [76543210] -> C :: Z C */
         cpu_set_flag(FLAG_C, value & 0x01);
+
+        DPRINTF(DBG_INFO, "LSR: Initial value: %02x", value);
+
         value = value >> 1;
         cpu_set_flag(FLAG_Z, value == 0);
+        cpu_set_flag(FLAG_N, value & 0x80);
+
+        /* result goes in accumulator or memory */
+        if (opmap->addressing_mode == CPU_ADDR_MODE_ACCUMULATOR) {
+            cpu_state.a = value;
+        } else {
+            memory_write(addr, value);
+        }
         break;
 
     case CPU_OPCODE_NOP:
@@ -517,6 +536,13 @@ uint8_t cpu_execute(void) {
         value |= t81;
         cpu_set_flag(FLAG_N, value & 0x80);
         cpu_set_flag(FLAG_Z, value == 0);
+
+        /* result goes in accumulator or memory */
+        if (opmap->addressing_mode == CPU_ADDR_MODE_ACCUMULATOR) {
+            cpu_state.a = value;
+        } else {
+            memory_write(addr, value);
+        }
         break;
 
     case CPU_OPCODE_ROR:
@@ -528,6 +554,13 @@ uint8_t cpu_execute(void) {
             value |= 0x80;
         cpu_set_flag(FLAG_N, value & 0x80);
         cpu_set_flag(FLAG_Z, value == 0);
+
+        /* result goes in accumulator or memory */
+        if (opmap->addressing_mode == CPU_ADDR_MODE_ACCUMULATOR) {
+            cpu_state.a = value;
+        } else {
+            memory_write(addr, value);
+        }
         break;
 
     case CPU_OPCODE_RTI:
