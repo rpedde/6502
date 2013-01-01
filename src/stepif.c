@@ -488,7 +488,9 @@ void process_command(char *cmd) {
 
     case TOK_RUN:
         stepif_running = 1;
-        tui_putstring(pcommand, "Free-running\n");
+        /* turn off blocking getch so we can get chars when free-running */
+        tui_window_nodelay(pcommand);
+        tui_putstring(pcommand, "Free-running: <ENTER> to stop\n");
         break;
 
     case TOK_FOLLOW:
@@ -709,6 +711,7 @@ int main(int argc, char *argv[]) {
     char *fifo;
     char *fifo_path;
     int pos;
+    int step_char;
 
     breakpoint_list.pnext = NULL;
     stepif_display_mode = DISPLAY_MODE_DUMP;
@@ -754,8 +757,24 @@ int main(int argc, char *argv[]) {
 
     while(1) {
         if(stepif_running) {
+            step_char = tui_getch(pcommand);
+            switch(step_char) {
+            case KEY_ENTER:
+            case 0x0a:
+                stepif_running = 0;
+                tui_window_delay(pcommand);
+                break;
+            case ERR:
+                break;
+            /* default: */
+            /*     sprintf(buffer, "%02x: %02d: %c\n", step_char, step_char, step_char); */
+            /*     tui_putstring(pcommand, buffer); */
+            /*     break; */
+            }
             process_command("next");
         } else {
+            /* make sure we are in delay mode */
+            tui_window_delay(pcommand);
             tui_putstring(pcommand, "> ");
             tui_getstring(pcommand, buffer, sizeof(buffer));
             if(strcmp(buffer,"quit") == 0)
