@@ -80,7 +80,6 @@ void tui_putva(window_t *pwindow, char *format, va_list args) {
     wrefresh(pwindow->pcwindow);
 }
 
-
 void tui_putstring(window_t *pwindow, char *format, ...) {
     va_list args;
 
@@ -113,6 +112,21 @@ void tui_window_callback(window_t *pwindow, void(*callback)(void)) {
     pwindow->on_refresh = callback;
     tui_refresh(pwindow);
 }
+
+void tui_window_nodelay(window_t *pwindow) {
+    noecho();
+    nodelay(pwindow->pcwindow, 1);
+}
+
+void tui_window_delay(window_t *pwindow) {
+    echo();
+    nodelay(pwindow->pcwindow, 0);
+}
+
+int tui_getch(window_t *pwindow) {
+    return wgetch(pwindow->pcwindow);
+}
+
 
 window_t *tui_window(int x, int y, int width, int height, int border,
                      char *title, int colorset) {

@@ -39,4 +39,9 @@ extern void tui_putva(window_t *pwindow, char *format, va_list args);
 extern void tui_setpos(window_t *pwindow, int xpos, int ypos);
 extern void tui_window_callback(window_t *pwindow, void(*callback)(void));
 
+extern void tui_window_nodelay(window_t *pwindow);
+extern void tui_window_delay(window_t *pwindow);
+int tui_getch(window_t *pwindow);
+
+
 #endif /* _LIBTUI_H_ */
