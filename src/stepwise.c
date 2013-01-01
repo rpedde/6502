@@ -90,7 +90,7 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
         start = cmd->param1;
         len = cmd->param2;
 
-        DPRINTF(DBG_DEBUG,"Attemping to read $%04x bytes\n", len);
+        DPRINTF(DBG_DEBUG,"Attemping to read $%04x bytes from $%04x\n", len, start);
 
         memory = (uint8_t*)malloc(len);
         if(!memory) {
@@ -98,8 +98,8 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
             exit(EXIT_FAILURE);
         }
 
-        for(current = start; (current >= start) &&  (current-start < len); current++) {
-            memory[current-start] = memory_read(current);
+        for(current = 0; current < len; current++) {
+            memory[current] = memory_read(current + start);
         }
 
         step_return(RESPONSE_OK, len, memory);
@@ -110,8 +110,10 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
         start = cmd->param1;
         len = cmd->extra_len;
 
-        for(current = start; current < len; current++) {
-            memory_write(current, data[current-start]);
+        DPRINTF(DBG_DEBUG, "Attempting to write $%04x bytes to $%04x\n", len, start);
+
+        for(current = 0; current < len; current++) {
+            memory_write(current + start, data[current]);
         }
 
         step_return(RESPONSE_OK, 0, NULL);
@@ -255,6 +257,11 @@ void stepwise_debugger(char *fifo) {
 
         DPRINTF(DBG_DEBUG, "Evaluating command\n");
         step_eval(&cmd, data);
+
+        if(data) {
+            free(data);
+            data = NULL;
+        }
         DPRINTF(DBG_DEBUG, "Waiting for input\n");
     }
 
