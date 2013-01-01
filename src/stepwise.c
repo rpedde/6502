@@ -158,7 +158,7 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
 
     case CMD_NEXT:
         cpu_execute();
-        step_return(RESPONSE_OK, 0, NULL);
+        step_return(RESPONSE_OK,sizeof(cpu_t),(uint8_t*)&cpu_state);
         break;
 
     default:

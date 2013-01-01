@@ -31,6 +31,7 @@ cpu_t stepif_state;
 int stepif_display_mode;
 int stepif_display_track;
 uint16_t stepif_display_addr;
+int stepif_follow_on_run=1;
 
 #define D_FATAL 0
 #define D_ERROR 1
@@ -54,6 +55,7 @@ char xlat[256];
 #define TOK_NEXT        6
 #define TOK_BREAK       7
 #define TOK_RUN         8
+#define TOK_FOLLOW      9
 #define TOK_UNKNOWN   100
 #define TOK_AMBIGUOUS 101
 
@@ -67,6 +69,7 @@ char *tokens[] = {
     "next",
     "break",
     "run",
+    "follow",
     NULL
 };
 
@@ -305,10 +308,11 @@ void process_command(char *cmd) {
     int argc;
     dbg_command_t command;
     dbg_response_t response;
-    uint8_t *data;
+    uint8_t *data = NULL;
     int result;
     int token;
     unsigned int temp;
+    uint16_t old_ip = stepif_state.ip;
 
     memset((void*)&command, 0, sizeof(command));
     memset((void*)&response, 0, sizeof(response));
@@ -328,7 +332,6 @@ void process_command(char *cmd) {
         command.cmd = CMD_VER;
         if((result = stepif_command(&command, NULL, &response, &data)) == RESPONSE_OK) {
             stepif_debug(D_DEBUG, "Response: %s\n",data);
-            free(data);
         }
         break;
 
@@ -429,17 +432,33 @@ void process_command(char *cmd) {
         break;
 
     case TOK_NEXT:
+        old_ip = stepif_state.ip;
+
         command.cmd = CMD_NEXT;
         stepif_command(&command, NULL, &response, &data);
-        tui_refresh(pregisters);
-        if((stepif_display_mode == DISPLAY_MODE_DISASM) && (stepif_display_track)) {
-            stepif_display_addr = stepif_state.ip;
-            tui_refresh(pdisplay);
+        memcpy((void*)&stepif_state, (void*)data, sizeof(cpu_t));
+
+        if ((stepif_state.ip == old_ip) && (stepif_running)) {
+            stepif_running = 0;
+            tui_putstring(pcommand, "Processor stalled\n");
+        }
+
+        if ((stepif_follow_on_run) || (!stepif_running)) {
+            tui_refresh(pregisters);
+            if((stepif_display_mode == DISPLAY_MODE_DISASM) && (stepif_display_track)) {
+                stepif_display_addr = stepif_state.ip;
+                tui_refresh(pdisplay);
+            }
         }
 
         if (breakpoint_is_set(stepif_state.ip) && stepif_running) {
             stepif_running = 0;
-            tui_putstring(pcommand, "Breakpoint reached.  Stopping.\n");
+            tui_putstring(pcommand, "Breakpoint $%04x reached\n", stepif_state.ip);
+            tui_refresh(pregisters);
+            if((stepif_display_mode == DISPLAY_MODE_DISASM) && (stepif_display_track)) {
+                stepif_display_addr = stepif_state.ip;
+                tui_refresh(pdisplay);
+            }
         }
         break;
 
@@ -472,6 +491,12 @@ void process_command(char *cmd) {
         tui_putstring(pcommand, "Free-running\n");
         break;
 
+    case TOK_FOLLOW:
+        stepif_follow_on_run = !stepif_follow_on_run;
+        tui_putstring(pcommand, "Follow mode is now %s\n",
+                      stepif_follow_on_run ? "on" : "off");
+        break;
+
     case TOK_AMBIGUOUS:
         tui_putstring(pcommand, "Ambiguous command\n");
         break;
@@ -480,6 +505,11 @@ void process_command(char *cmd) {
     default:
         tui_putstring(pcommand, "Unknown command\n");
         break;
+    }
+
+    if(data) {
+        free(data);
+        data = NULL;
     }
 
     util_dispose_split(argv);
