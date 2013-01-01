@@ -235,6 +235,39 @@ uint8_t cpu_execute(void) {
 
     /* now we have the real addr, let's do the opcode business */
     switch(opmap->opcode_family) {
+
+
+    case CPU_OPCODE_SBC:
+        /* /\* A - M - C -> A :: N Z C V *\/ */
+        /* if(cpu_state.p & FLAG_D) { */
+        /*     /\* BCD mode *\/ */
+        /*     ts161 = (cpu_state.a & 0x0f) - (value & 0x0f) + cpu_flag(FLAG_C) - 1; */
+        /*     if(ts161 < 0) */
+        /*         ts161 = ((ts161 - 6) & 0x0f) - 0x10; */
+
+        /*     ts162 = (cpu_state.a & 0xf0) - (value & 0xf0) + ts161; */
+        /*     if(ts162 < 0) */
+        /*         ts162 -= 0x60; */
+
+        /*     cpu_state.a = ts162 & 0xff; */
+
+        /*     cpu_set_flag(FLAG_C, ts162 >= 0); */
+        /*     cpu_set_flag(FLAG_N, cpu_state.a & 0x80); */
+        /*     cpu_set_flag(FLAG_V, ((ts162) < -128) || ((ts162) > 127)); */
+        /*     cpu_set_flag(FLAG_Z, cpu_state.a == 0); */
+        /* } else { */
+        /*     /\* standard mode *\/ */
+        /*     ts161 = cpu_state.a - value - (1 - cpu_flag(FLAG_C)); */
+        /*     cpu_state.a = ts161 & 0xff; */
+
+        /*     cpu_set_flag(FLAG_C, ts161 >= 0); */
+        /*     cpu_set_flag(FLAG_N, cpu_state.a & 0x80); */
+        /*     cpu_set_flag(FLAG_V, ((ts161) < -128) || ((ts161) > 127)); */
+        /*     cpu_set_flag(FLAG_Z, cpu_state.a == 0); */
+        /* } */
+        /* break; /\* SBC *\/ */
+        value ^= 0xff;
+
     case CPU_OPCODE_ADC:
         /* A + M + C -> A :: N Z C V */
         if(cpu_state.p & FLAG_D) {
@@ -256,13 +289,16 @@ uint8_t cpu_execute(void) {
         } else {
             /* standard mode */
             t161 = cpu_state.a + value + cpu_flag(FLAG_C);
-            cpu_state.a = t161 & 0xff;
+            t81 = t161 & 0xff;
 
-            t162 = twos_complement(cpu_state.a) + twos_complement(value) + cpu_flag(FLAG_C);
+            cpu_set_flag(FLAG_V, ((cpu_state.a ^ t81) & (value ^ t81)) & 0x80);
+            cpu_state.a = t81;
+
+            /* t162 = twos_complement(cpu_state.a) + twos_complement(value) + cpu_flag(FLAG_C); */
 
             cpu_set_flag(FLAG_C, t161 > 0xff);
             cpu_set_flag(FLAG_N, cpu_state.a & 0x80);
-            cpu_set_flag(FLAG_V, ((t162) < -128) || ((t162) > 127));
+            /* cpu_set_flag(FLAG_V, ((t162) < -128) || ((t162) > 127)); */
             cpu_set_flag(FLAG_Z, cpu_state.a == 0);
         }
         break; /* ADC */
@@ -572,37 +608,6 @@ uint8_t cpu_execute(void) {
         cpu_state.ip = cpu_pull_16();
         cpu_state.ip++;
         break;
-
-    case CPU_OPCODE_SBC:
-        /* A - M - C -> A :: N Z C V */
-        if(cpu_state.p & FLAG_D) {
-            /* BCD mode */
-            ts161 = (cpu_state.a & 0x0f) - (value & 0x0f) + cpu_flag(FLAG_C) - 1;
-            if(ts161 < 0)
-                ts161 = ((ts161 - 6) & 0x0f) - 0x10;
-
-            ts162 = (cpu_state.a & 0xf0) - (value & 0xf0) + ts161;
-            if(ts162 < 0)
-                ts162 -= 0x60;
-
-            cpu_state.a = ts162 & 0xff;
-
-            cpu_set_flag(FLAG_C, ts162 >= 0);
-            cpu_set_flag(FLAG_N, cpu_state.a & 0x80);
-            cpu_set_flag(FLAG_V, ((ts162) < -128) || ((ts162) > 127));
-            cpu_set_flag(FLAG_Z, cpu_state.a == 0);
-        } else {
-            /* standard mode */
-            ts161 = cpu_state.a - (value + cpu_flag(FLAG_C));
-
-            cpu_state.a = ts161 & 0xff;
-
-            cpu_set_flag(FLAG_C, ts161 >= 0);
-            cpu_set_flag(FLAG_N, ts161 < 0);
-            cpu_set_flag(FLAG_V, ((ts161) < -128) || ((ts161) > 127));
-            cpu_set_flag(FLAG_Z, cpu_state.a == 0);
-        }
-        break; /* SBC */
 
     case CPU_OPCODE_SEC:
         cpu_set_flag(FLAG_C, 1);
