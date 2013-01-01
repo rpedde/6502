@@ -171,7 +171,7 @@ uint8_t cpu_execute(void) {
         DPRINTF(DBG_INFO,"addr for absolute: $%04x\n", addr);
         break;
     default:
-        DPRINTF(DBG_FATAL,"Unsupported indexing mode\n");
+        DPRINTF(DBG_FATAL,"Unsupported indexing mode: %d\n", opmap->addressing_mode);
         exit(EXIT_FAILURE);
     }
 
@@ -208,14 +208,15 @@ uint8_t cpu_execute(void) {
         break;
     case CPU_ADDR_MODE_IND_X:
         addr = cpu_makeword(memory_read(addr + cpu_state.x),
-                            memory_read(addr+ cpu_state.x + 1));
+                            memory_read(addr + cpu_state.x + 1));
         break;
     case CPU_ADDR_MODE_IND_Y:
         addr = cpu_makeword(memory_read(addr),
-                            memory_read(addr+1)) + cpu_state.y;
+                            memory_read(addr + cpu_state.y + 1));
+        break;
 
     default:
-        DPRINTF(DBG_FATAL,"Unsupported indexing mode\n");
+        DPRINTF(DBG_FATAL,"Unsupported indexing mode (resolving addr): %d\n", opmap->addressing_mode);
         exit(EXIT_FAILURE);
     }
 
@@ -613,10 +614,11 @@ uint8_t cpu_execute(void) {
         break;
 
     case CPU_OPCODE_TXS:
+        /* TXS does not, in fact, set N or Z */
         /* X -> SP :: N Z */
         cpu_state.sp = cpu_state.x;
-        cpu_set_flag(FLAG_N, cpu_state.x & 0x80);
-        cpu_set_flag(FLAG_Z, cpu_state.x == 0);
+        /* cpu_set_flag(FLAG_N, cpu_state.x & 0x80); */
+        /* cpu_set_flag(FLAG_Z, cpu_state.x == 0); */
         break;
 
     case CPU_OPCODE_TYA:
