@@ -207,12 +207,15 @@ uint8_t cpu_execute(void) {
         addr = cpu_makeword(memory_read(addr), memory_read(addr+1));
         break;
     case CPU_ADDR_MODE_IND_X:
-        addr = cpu_makeword(memory_read(addr + cpu_state.x),
-                            memory_read(addr + cpu_state.x + 1));
+        addr = (addr + cpu_state.x) % 256;
+        addr = cpu_makeword(memory_read(addr), memory_read(addr + 1));
+
+        /* addr = cpu_makeword(memory_read(addr + cpu_state.x), */
+        /*                     memory_read(addr + cpu_state.x + 1)); */
         break;
     case CPU_ADDR_MODE_IND_Y:
         addr = cpu_makeword(memory_read(addr),
-                            memory_read(addr + cpu_state.y + 1));
+                            memory_read(addr + 1)) + cpu_state.y;
         break;
 
     default:
