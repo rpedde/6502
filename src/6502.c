@@ -300,8 +300,15 @@ uint8_t cpu_execute(void) {
     case CPU_OPCODE_BIT:
         /* A AND M, M7 -> N, M6 -> V :: Z */
         t81 = cpu_state.a & value;
-        cpu_set_flag(FLAG_N, value & 0x80);
-        cpu_set_flag(FLAG_V, value & 0x40);
+
+        /* only the Z flag is set in immediate mode.  This is
+           the only 6502 opcode that affects different flags
+           depending on addressing mode */
+        if (opmap->addressing_mode != CPU_ADDR_MODE_IMMEDIATE) {
+            cpu_set_flag(FLAG_N, value & 0x80);
+            cpu_set_flag(FLAG_V, value & 0x40);
+        }
+
         cpu_set_flag(FLAG_Z, t81 == 0);
         break;
 
