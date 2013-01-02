@@ -2,7 +2,7 @@
 
 import struct
 
-class RP65Emu:
+class RP65Emu(object):
     CMD_NOP = 0
     CMD_VER = 1
     CMD_REGS = 2       # cpu_state struct
@@ -131,10 +131,15 @@ class RP65Emu:
         return data
 
     def set_memory(self, start, data):
+        if isinstance(data, list):
+            data = struct.pack('%sB' % len(data), *data)
+
         data_length = len(data)
 
         self._send_command(self.CMD_WRITEMEM, start, data_length,
                            data_length, data)
 
     def step(self):
-        self._send_command(self.CMD_NEXT, 0, 0, 0, None)
+        data = self._send_command(self.CMD_NEXT, 0, 0, 0, None)
+        (self._p, self._a, self._x, self._y,
+         self._ip, self._sp, self._irq) = struct.unpack('BBBBHBB', data)

@@ -5,13 +5,13 @@ from py65.utils.addressing import AddressParser
 from py65.memory import ObservableMemory
 
 
-class PY65Emu():
-    def __init__():
+class PY65Emu(object):
+    def __init__(self):
         self.mpu = NMOS6502()
         self.address_parser = AddressParser()
-        self.assembler = Assembler(self.mpu, self.address_parser)
+        # self.assembler = Assembler(self.mpu, self.address_parser)
 
-        m = ObservableMemory(addrWith=self.mpu.ADDR_WIDTH)
+        m = ObservableMemory(addrWidth=self.mpu.ADDR_WIDTH)
         self.mpu.memory = m
 
     @property

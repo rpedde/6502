@@ -14,11 +14,10 @@ m = ObservableMemory(addrWidth=mpu.ADDR_WIDTH)
 mpu.memory = m
 
 def assemble(statements, start):
-    result = None
+    result = []
 
     for statement in statements:
         bytes = assembler.assemble(statement, start)
         result += bytes
         start += len(bytes)
-
-    return bytes
+    return result
