@@ -135,3 +135,6 @@ class RP65Emu:
 
         self._send_command(self.CMD_WRITEMEM, start, data_length,
                            data_length, data)
+
+    def step(self):
+        self._send_command(self.CMD_NEXT, 0, 0, 0, None)
