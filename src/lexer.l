@@ -2,19 +2,19 @@
 
 /*
  * Copyright (C) 2009 Ron Pedde (ron@pedde.com)
- * 
- * This program is free software; you can redistribute it and/or modify         
+ *
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or            
+ * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of               
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software                  
+ * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
@@ -136,7 +136,7 @@ a                              { return(AREG); }
 {hex_byte}                     { sscanf(&yytext[1],"%02x",&tempint); yylval.byte = tempint; return(BYTE); }
 {hex_word}                     { sscanf(&yytext[1],"%04x",&tempint); yylval.word = tempint; return(WORD); }
 
-[0-9]+                         { if(atoi(yytext) < 256) { yylval.byte = atoi(yytext); return(BYTE); 
+[0-9]+                         { if(atoi(yytext) < 256) { yylval.byte = atoi(yytext); return(BYTE);
                                                         } else { yylval.word = atoi(yytext); return (WORD); }}
 
 \".\"                          { yylval.byte = yytext[1]; return(BYTE); }
@@ -144,7 +144,6 @@ a                              { return(AREG); }
                                  yylval.string[strlen(yylval.string) - 1] = '\0';
                                  return(STRING); }
 [A-Za-z0-9_]+                  { yylval.string = strdup(yytext); return(LABEL); }
-
 
 .                              { return yytext[0]; }
 

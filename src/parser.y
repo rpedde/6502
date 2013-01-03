@@ -116,6 +116,7 @@ value: lvalue { $$ = $1; }
 lvalue: BYTE { $$ = y_new_nval(Y_TYPE_BYTE, $1, NULL); }
 | WORD { $$ = y_new_nval(Y_TYPE_WORD, $1, NULL); }
 | LABEL { $$ = y_new_nval(Y_TYPE_LABEL, 0, $1); }
+| '*' { $$ = y_new_nval(Y_TYPE_LABEL, 0, "*"); }
 ;
 
 %%
@@ -160,7 +161,7 @@ value_t *y_new_nval(int type, uint16_t nval, char *lval) {
 /*
  * y_evaluate_val
  */
-value_t *y_evaluate_val(value_t *value, int line) {
+value_t *y_evaluate_val(value_t *value, int line, uint16_t addr) {
     value_t *retval;
     value_t *left, *right;
     uint16_t left_val, right_val;
@@ -179,12 +180,18 @@ value_t *y_evaluate_val(value_t *value, int line) {
                     line, value->label);
             exit(EXIT_FAILURE);
         }
+
+        /* dummy up the "*" label */
+        if (strcmp(value->label, "*") == 0) {
+            retval->word = addr;
+        }
+
         return retval;
     }
 
     if(value->type == Y_TYPE_ARITH) {
-        left = y_evaluate_val(value->left, line);
-        right = y_evaluate_val(value->right, line);
+        left = y_evaluate_val(value->left, line, addr);
+        right = y_evaluate_val(value->right, line, addr);
 
         retval = (value_t*)malloc(sizeof(value_t));
         if(!retval) {

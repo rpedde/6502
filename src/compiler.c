@@ -105,7 +105,7 @@ void pass2(void) {
     while(pcurrent) {
         if (pcurrent->data->type == TYPE_INSTRUCTION) {
             if(pcurrent->data->value)
-                operand = y_evaluate_val(pcurrent->data->value, pcurrent->data->line);
+                operand = y_evaluate_val(pcurrent->data->value, pcurrent->data->line, 0);
 
             switch(pcurrent->data->addressing_mode) {
             case CPU_ADDR_MODE_IMPLICIT:
@@ -246,7 +246,7 @@ void pass3(void) {
              * addressing and label fixups */
 
             if(pcurrent->data->value) {
-                operand = y_evaluate_val(pcurrent->data->value, pcurrent->data->line);
+                operand = y_evaluate_val(pcurrent->data->value, pcurrent->data->line, pcurrent->data->offset);
                 if(pcurrent->data->promote) {
                     operand->type = Y_TYPE_WORD;
                     operand->word = operand->byte;
@@ -423,6 +423,7 @@ int main(int argc, char *argv[]) {
     int result;
     FILE *fin;
     int option;
+    value_t star_symbol = { Y_TYPE_WORD, 0, 0, "*", NULL, NULL };
 
     debug_level(2);
 
@@ -447,6 +448,9 @@ int main(int argc, char *argv[]) {
         perror("fopen");
         exit(EXIT_FAILURE);
     }
+
+    /* add a dummy symtable entry */
+    y_add_symtable("*", &star_symbol);
 
     DPRINTF(DBG_INFO, "Pass 1:  Parsing.\n");
     yyin = fin;

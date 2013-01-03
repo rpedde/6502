@@ -71,6 +71,7 @@ extern symtable_t symtable;
 extern uint16_t compiler_offset;     /* current compiler offset */
 extern void add_opdata(opdata_t*);
 extern value_t *y_lookup_symbol(char *label);
-extern value_t *y_evaluate_val(value_t *value, int line);
+extern value_t *y_evaluate_val(value_t *value, int line, uint16_t addr);
+extern void y_add_symtable(char *label, value_t *value);
 
 #endif /* _COMPILER_H_ */
