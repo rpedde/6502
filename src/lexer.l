@@ -33,6 +33,9 @@ extern int yydebug;
 extern int parse_failure;
 unsigned int tempint;
 
+uint16_t t161;
+uint8_t t81;
+
 %}
 
 %option yylineno
@@ -41,6 +44,7 @@ unsigned int tempint;
 
 hex_byte $[a-f0-9][a-f0-9]
 hex_word $[a-f0-9][a-f0-9][a-f0-9][a-f0-9]
+binary_literal %[0-1]{1,16}
 qstring \"[^\"\n]*[\"\n]
 
 %%
@@ -138,6 +142,9 @@ a                              { return(AREG); }
 {hex_byte}                     { sscanf(&yytext[1],"%02x",&tempint); yylval.byte = tempint; return(BYTE); }
 {hex_word}                     { sscanf(&yytext[1],"%04x",&tempint); yylval.word = tempint; return(WORD); }
 
+{binary_literal}               { if((t161 = strtol(&yytext[1], NULL, 2)) < 256) { yylval.byte = t161; return(BYTE);
+                                                                                } else { yylval.word = t161; return(WORD); }}
+
 [0-9]+                         { if(atoi(yytext) < 256) { yylval.byte = atoi(yytext); return(BYTE);
                                                         } else { yylval.word = atoi(yytext); return (WORD); }}
 
@@ -155,3 +162,7 @@ void yyerror(char *msg) {
     parse_failure = 1;
     DPRINTF(DBG_ERROR,"Parser error, line %d: %s\n",yylineno, msg);
 }
+
+/* Local Variables:  */
+/* mode: fundamental */
+/* End:              */
