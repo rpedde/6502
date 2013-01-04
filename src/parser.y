@@ -45,6 +45,8 @@ void y_add_offset(uint16_t offset);
 void y_add_wordsym(char *label, uint16_t word);
 void y_add_bytesym(char *label, uint8_t byte);
 void y_add_byte(uint8_t byte);
+void y_add_word(uint16_t word);
+void y_add_nval(value_t *value);
 void y_add_string(char *string);
 value_t *y_create_arith(value_t *left, value_t *right, uint8_t operator);
 
@@ -72,11 +74,14 @@ int parser_line = 1;
 %token <string> ADDRLABEL
 %token <string> STRING
 %token BYTELITERAL
+%token WORDLITERAL
 %token EOL
 %token TAB
 
 %type <nval> lvalue
 %type <nval> value
+%type <nval> wordlvalue
+%type <nval> bytelvalue
 
 %%
 
@@ -101,10 +106,28 @@ line: OP EOL { y_add_opdata($1, CPU_ADDR_MODE_IMPLICIT, NULL); parser_line++; }
 | LABEL '=' BYTE EOL { y_add_bytesym($1, $3); parser_line++; }
 | BYTELITERAL bytestring EOL { parser_line++; }
 | BYTELITERAL STRING EOL { y_add_string($2); parser_line++; }
+| WORDLITERAL wordstring EOL { parser_line++; }
 ;
 
-bytestring: BYTE { y_add_byte($1); }
-| bytestring ',' BYTE { y_add_byte($3); }
+wordlvalue: WORD { $$ = y_new_nval(Y_TYPE_WORD, $1, NULL); }
+| LABEL { $$ = y_new_nval(Y_TYPE_LABEL, 0, $1); }
+| '*' { $$ = y_new_nval(Y_TYPE_LABEL, 0, "*"); }
+;
+
+/* We'll typecheck these on pass 2 */
+bytelvalue: BYTE { $$ = y_new_nval(Y_TYPE_BYTE, $1, NULL); }
+;
+
+bytestring: bytelvalue { y_add_nval($1); }
+| bytestring ',' bytelvalue { y_add_nval($3); }
+;
+
+wordstring: wordlvalue { y_add_nval($1); }
+| wordstring ',' wordlvalue { y_add_nval($3); }
+;
+
+lvalue: wordlvalue
+| bytelvalue
 ;
 
 value: lvalue { $$ = $1; }
@@ -112,12 +135,6 @@ value: lvalue { $$ = $1; }
 | lvalue '-' lvalue { $$ = y_create_arith($1, $3, '-'); }
 ;
 
-/* We'll typecheck these on pass 2 */
-lvalue: BYTE { $$ = y_new_nval(Y_TYPE_BYTE, $1, NULL); }
-| WORD { $$ = y_new_nval(Y_TYPE_WORD, $1, NULL); }
-| LABEL { $$ = y_new_nval(Y_TYPE_LABEL, 0, $1); }
-| '*' { $$ = y_new_nval(Y_TYPE_LABEL, 0, "*"); }
-;
 
 %%
 
@@ -309,6 +326,59 @@ void y_add_byte(uint8_t byte) {
     pvalue->type = TYPE_DATA;
     pvalue->value = value;
     pvalue->len = 1;
+
+    add_opdata(pvalue);
+}
+
+
+/*
+ * y_add_word
+ */
+void y_add_word(uint16_t word) {
+    value_t *value;
+    opdata_t *pvalue;
+
+    value = y_new_nval(Y_TYPE_WORD, word, NULL);
+
+    pvalue = (opdata_t *)malloc(sizeof(opdata_t));
+    if(!pvalue) {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+
+    memset(pvalue,0,sizeof(opdata_t));
+    pvalue->type = TYPE_DATA;
+    pvalue->value = value;
+    pvalue->len = 2;
+
+    add_opdata(pvalue);
+}
+
+void y_add_nval(value_t *value) {
+    opdata_t *pvalue;
+
+    pvalue = (opdata_t *)malloc(sizeof(opdata_t));
+    if(!pvalue) {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+
+    memset(pvalue,0,sizeof(opdata_t));
+    pvalue->type = TYPE_DATA;
+    pvalue->value = value;
+    switch(value->type) {
+    case Y_TYPE_BYTE:
+        pvalue->len = 1;
+        break;
+    case Y_TYPE_WORD:
+    case Y_TYPE_LABEL:
+        pvalue->len = 2;
+        break;
+    default:
+        fprintf(stderr, "line %d: don't know type of arith expression\n",
+            parser_line);
+        exit(EXIT_FAILURE);
+    }
 
     add_opdata(pvalue);
 }

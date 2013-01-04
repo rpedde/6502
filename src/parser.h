@@ -50,8 +50,9 @@
      ADDRLABEL = 266,
      STRING = 267,
      BYTELITERAL = 268,
-     EOL = 269,
-     TAB = 270
+     WORDLITERAL = 269,
+     EOL = 270,
+     TAB = 271
    };
 #endif
 /* Tokens.  */
@@ -66,15 +67,16 @@
 #define ADDRLABEL 266
 #define STRING 267
 #define BYTELITERAL 268
-#define EOL 269
-#define TAB 270
+#define WORDLITERAL 269
+#define EOL 270
+#define TAB 271
 
 
 
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE
-#line 56 "parser.y"
+#line 58 "parser.y"
 {
     uint8_t byte;
     uint16_t word;
@@ -83,7 +85,7 @@ typedef union YYSTYPE
     value_t *nval;
 }
 /* Line 1529 of yacc.c.  */
-#line 87 "parser.h"
+#line 89 "parser.h"
 	YYSTYPE;
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1

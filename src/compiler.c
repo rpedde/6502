@@ -292,137 +292,181 @@ void pass3(void) {
     }
 }
 
-void pass4(void) {
-    FILE *map, *bin;
+FILE *make_fh(char *basename, char *extension) {
+    FILE *fh;
+    char *filename = NULL;
+
+    asprintf(&filename, "%s.%s", basename, extension);
+    if(!filename) {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+
+    if(!(fh = fopen(filename,"w"))) {
+        free(filename);
+        perror("fopen");
+        exit(EXIT_FAILURE);
+    }
+
+    free(filename);
+    return fh;
+}
+
+
+void write_output(char *basename, int write_map, int split_bin) {
+    FILE *map = NULL, *bin = NULL;
     opdata_list_t *pcurrent = list.next;
     int len;
     symtable_t *psym;
+    uint16_t current_offset;
 
-    if(!(map = fopen("out.map","w"))) {
-        perror("fopen");
-        exit(EXIT_FAILURE);
-    }
+    if(write_map) {
+        map = make_fh(basename, "map");
+        DPRINTF(DBG_INFO, "Writing output.\n");
 
-    if(!(bin = fopen("out.bin","w"))) {
-        perror("fopen");
-        exit(EXIT_FAILURE);
-    }
+        fprintf(map, "Symbol Table:\n=======================================================\n\n");
 
-    DPRINTF(DBG_INFO, "Pass 4: Writing output.\n");
-    fprintf(map, "Symbol Table:\n=======================================================\n\n");
-
-    psym = symtable.next;
-    while(psym) {
-        len = fprintf(map, "%s ", psym->label);
-        fprintf(map, "%*c", 40 - len, ' ');
-        if(psym->value->type == Y_TYPE_BYTE)
-            fprintf(map, "$%02x", psym->value->byte);
-        else if (psym->value->type == Y_TYPE_WORD)
-            fprintf(map, "$%04x", psym->value->word);
-        else {
-            DPRINTF(DBG_ERROR, "Bad Y-type\n");
-            exit(EXIT_FAILURE);
+        psym = symtable.next;
+        while(psym) {
+            if (strcmp(psym->label, "*") != 0) {
+                len = fprintf(map, "%s ", psym->label);
+                fprintf(map, "%*c", 40 - len, ' ');
+                if(psym->value->type == Y_TYPE_BYTE)
+                    fprintf(map, "$%02x", psym->value->byte);
+                else if (psym->value->type == Y_TYPE_WORD)
+                    fprintf(map, "$%04x", psym->value->word);
+                else {
+                    DPRINTF(DBG_ERROR, "Bad Y-type\n");
+                    exit(EXIT_FAILURE);
+                }
+                fprintf(map,"\n");
+            }
+            psym = psym->next;
         }
-        fprintf(map,"\n");
-        psym = psym->next;
+
+        fprintf(map, "\n\nOutput:\n=======================================================\n\n");
+
+        while(pcurrent) {
+            if(pcurrent->data->type == TYPE_INSTRUCTION) {
+                len = 0;
+                len = fprintf(map,"%04x: %02x ", pcurrent->data->offset,
+                              pcurrent->data->opcode);
+
+                if(pcurrent->data->len == 2)
+                    len += fprintf(map,"%02x ", pcurrent->data->value->byte);
+                else if(pcurrent->data->len == 3)
+                    len += fprintf(map,"%02x %02x", pcurrent->data->value->word & 0x00ff,
+                                   (pcurrent->data->value->word >> 8) & 0x00ff);
+
+                fprintf(map, "%*c", 20 - len, ' ');
+                fprintf(map, "%s ", cpu_opcode_mnemonics[pcurrent->data->opcode_family]);
+
+                switch(pcurrent->data->addressing_mode) {
+                case CPU_ADDR_MODE_IMPLICIT:
+                    break;
+                case CPU_ADDR_MODE_ACCUMULATOR:
+                    fprintf(map, "A");
+                    break;
+                case CPU_ADDR_MODE_IMMEDIATE:
+                    fprintf(map, "#$%02x", pcurrent->data->value->byte);
+                    break;
+                case CPU_ADDR_MODE_RELATIVE:
+                    fprintf(map, "$%02x", pcurrent->data->value->byte);
+                    break;
+                case CPU_ADDR_MODE_ABSOLUTE:
+                    fprintf(map, "$%04x", pcurrent->data->value->word);
+                    break;
+                case CPU_ADDR_MODE_ABSOLUTE_X:
+                    fprintf(map, "$%04x,X", pcurrent->data->value->word);
+                    break;
+                case CPU_ADDR_MODE_ABSOLUTE_Y:
+                    fprintf(map, "$%04x,Y", pcurrent->data->value->word);
+                    break;
+                case CPU_ADDR_MODE_ZPAGE:
+                    fprintf(map, "$%02x", pcurrent->data->value->byte);
+                    break;
+                case CPU_ADDR_MODE_ZPAGE_X:
+                    fprintf(map, "$%02x,X", pcurrent->data->value->byte);
+                    break;
+                case CPU_ADDR_MODE_ZPAGE_Y:
+                    fprintf(map, "$%02x,Y", pcurrent->data->value->byte);
+                    break;
+                case CPU_ADDR_MODE_INDIRECT:
+                    fprintf(map, "($%04x)", pcurrent->data->value->word);
+                    break;
+                case CPU_ADDR_MODE_IND_X:
+                    fprintf(map, "($%04x,X)", pcurrent->data->value->word);
+                    break;
+                case CPU_ADDR_MODE_IND_Y:
+                    fprintf(map, "($%04x),Y)", pcurrent->data->value->word);
+                    break;
+                default:
+                    DPRINTF(DBG_ERROR,"Unknown addressing mode in map file\n");
+                    exit(EXIT_FAILURE);
+                }
+
+                fprintf(map, "\n");
+            } else if(pcurrent->data->type == TYPE_DATA) {
+                len = 0;
+                len = fprintf(map,"%04x: ", pcurrent->data->offset);
+                if(pcurrent->data->value->type == Y_TYPE_BYTE) {
+                    len += fprintf(map, "%02x", pcurrent->data->value->byte);
+                    fprintf(map, "%*c", 20 - len, ' ');
+                    fprintf(map, ".data %02x", pcurrent->data->value->byte);
+                } else if(pcurrent->data->value->type == Y_TYPE_WORD) {
+                    len += fprintf(map, "%02x %02x",
+                                   (pcurrent->data->value->word & 0x00FF),
+                                   (pcurrent->data->value->word & 0xFF00) >> 8);
+                    fprintf(map, "%*c", 20 - len, ' ');
+                    fprintf(map, ".data %04x", pcurrent->data->value->word);
+                } else if(pcurrent->data->value->type == Y_TYPE_LABEL) {
+                    value_t *psym = y_evaluate_val(pcurrent->data->value, pcurrent->data->line, pcurrent->data->offset);
+                    len += fprintf(map, "%02x %02x",
+                                   (psym->word & 0x00FF),
+                                   (psym->word & 0xFF00) >> 8);
+                    fprintf(map, "%*c", 20 - len, ' ');
+                    fprintf(map, ".data %04x", psym->word);
+                } else {
+                    DPRINTF(DBG_ERROR, "Bad Y-type in static data\n");
+                    exit(EXIT_FAILURE);
+                }
+                fprintf(map, "\n");
+            }
+            pcurrent = pcurrent->next;
+        }
+        fclose(map);
     }
 
-    fprintf(map, "\n\nOutput:\n=======================================================\n\n");
+    /* we always want to write the bin */
+    bin = make_fh(basename, "bin");
+
+    pcurrent = list.next;
+    current_offset = pcurrent->data->offset;
 
     while(pcurrent) {
         if(pcurrent->data->type == TYPE_INSTRUCTION) {
-            len = 0;
-            len = fprintf(map,"%04x: %02x ", pcurrent->data->offset,
-                          pcurrent->data->opcode);
-
-            if(pcurrent->data->len == 2)
-                len += fprintf(map,"%02x ", pcurrent->data->value->byte);
-            else if(pcurrent->data->len == 3)
-                len += fprintf(map,"%02x %02x", pcurrent->data->value->word & 0x00ff,
-                               (pcurrent->data->value->word >> 8) & 0x00ff);
-
-            fprintf(map, "%*c", 20 - len, ' ');
-            fprintf(map, "%s ", cpu_opcode_mnemonics[pcurrent->data->opcode_family]);
-
-            switch(pcurrent->data->addressing_mode) {
-            case CPU_ADDR_MODE_IMPLICIT:
-                break;
-            case CPU_ADDR_MODE_ACCUMULATOR:
-                fprintf(map, "A");
-                break;
-            case CPU_ADDR_MODE_IMMEDIATE:
-                fprintf(map, "#$%02x", pcurrent->data->value->byte);
-                break;
-            case CPU_ADDR_MODE_RELATIVE:
-                fprintf(map, "$%02x", pcurrent->data->value->byte);
-                break;
-            case CPU_ADDR_MODE_ABSOLUTE:
-                fprintf(map, "$%04x", pcurrent->data->value->word);
-                break;
-            case CPU_ADDR_MODE_ABSOLUTE_X:
-                fprintf(map, "$%04x,X", pcurrent->data->value->word);
-                break;
-            case CPU_ADDR_MODE_ABSOLUTE_Y:
-                fprintf(map, "$%04x,Y", pcurrent->data->value->word);
-                break;
-            case CPU_ADDR_MODE_ZPAGE:
-                fprintf(map, "$%02x", pcurrent->data->value->byte);
-                break;
-            case CPU_ADDR_MODE_ZPAGE_X:
-                fprintf(map, "$%02x,X", pcurrent->data->value->byte);
-                break;
-            case CPU_ADDR_MODE_ZPAGE_Y:
-                fprintf(map, "$%02x,Y", pcurrent->data->value->byte);
-                break;
-            case CPU_ADDR_MODE_INDIRECT:
-                fprintf(map, "($%04x)", pcurrent->data->value->word);
-                break;
-            case CPU_ADDR_MODE_IND_X:
-                fprintf(map, "($%04x,X)", pcurrent->data->value->word);
-                break;
-            case CPU_ADDR_MODE_IND_Y:
-                fprintf(map, "($%04x),Y)", pcurrent->data->value->word);
-                break;
-            default:
-                DPRINTF(DBG_ERROR,"Unknown addressing mode in map file\n");
-                exit(EXIT_FAILURE);
-            }
-
-            fprintf(map, "\n");
-
             fprintf(bin, "%c", pcurrent->data->opcode);
             if(pcurrent->data->len == 2)
                 fprintf(bin, "%c", pcurrent->data->value->byte);
             else if(pcurrent->data->len == 3)
                 fprintf(bin, "%c%c", pcurrent->data->value->word & 0x00ff,
                         (pcurrent->data->value->word >> 8) & 0x00ff);
-        } else if(pcurrent->data->type == TYPE_DATA) {
-            len = 0;
-            len = fprintf(map,"%04x: ", pcurrent->data->offset);
-            if(pcurrent->data->value->type == Y_TYPE_BYTE) {
-                len += fprintf(map, "%02x", pcurrent->data->value->byte);
-                fprintf(map, "%*c", 20 - len, ' ');
-                fprintf(map, ".data %02x", pcurrent->data->value->byte);
-                fprintf(bin,"%c", pcurrent->data->value->byte);
-            } else {
-                DPRINTF(DBG_ERROR, "Bad Y-type in static data\n");
-                exit(EXIT_FAILURE);
-            }
 
-            fprintf(map, "\n");
+        } else if(pcurrent->data->type == TYPE_DATA) {
+                fprintf(bin,"%c", pcurrent->data->value->byte);
         }
 
         pcurrent = pcurrent->next;
+        fclose(bin);
     }
-
-    fclose(bin);
-    fclose(map);
 }
 
 int main(int argc, char *argv[]) {
     int result;
     FILE *fin;
     int option;
+    char *basepath;
+    char *suffix;
     value_t star_symbol = { Y_TYPE_WORD, 0, 0, "*", NULL, NULL };
 
     debug_level(2);
@@ -442,6 +486,15 @@ int main(int argc, char *argv[]) {
         fprintf(stderr,"Must specify filename as first non-option\n");
         exit(EXIT_FAILURE);
     }
+
+    basepath = strdup(argv[optind]);
+    if(!basepath) {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+
+    if((suffix = strrchr(basepath, '.')))
+        *suffix = 0;
 
     fin = fopen(argv[optind], "r");
     if(!fin) {
@@ -464,7 +517,8 @@ int main(int argc, char *argv[]) {
 
     pass2();
     pass3();
-    pass4();
+
+    write_output(basepath, 1, 0);
 
     DPRINTF(DBG_INFO, "Done.\n");
     exit(EXIT_SUCCESS);
