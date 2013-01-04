@@ -77,6 +77,8 @@ int parser_line = 1;
 %token WORDLITERAL
 %token EOL
 %token TAB
+%token EQ
+%token ORG
 
 %type <nval> lvalue
 %type <nval> value
@@ -94,16 +96,19 @@ line: OP EOL { y_add_opdata($1, CPU_ADDR_MODE_IMPLICIT, NULL); parser_line++; }
 | OP '#' value EOL { y_add_opdata($1, CPU_ADDR_MODE_IMMEDIATE, $3); parser_line++; } // Must be BYTE
 | RELOP value EOL { y_add_opdata($1, CPU_ADDR_MODE_RELATIVE, $2); parser_line++;} // Must be BYTE
 | OP value EOL { y_add_opdata($1, CPU_ADDR_MODE_UNKNOWN, $2); parser_line++; } // OR REL!
-| OP value ',' XREG EOL { y_add_opdata($1, CPU_ADDR_MODE_UNKNOWN_X, $2); parser_line++; }
-| OP value ',' YREG EOL { y_add_opdata($1, CPU_ADDR_MODE_UNKNOWN_Y, $2); parser_line++; }
+| OP value ',' XREG EOL { y_add_opdata($1, CPU_ADDR_MODE_UNKNOWN_X, $2); parser_line++; } // should be word, optimize at compile
+| OP value ',' YREG EOL { y_add_opdata($1, CPU_ADDR_MODE_UNKNOWN_Y, $2); parser_line++; } // should be word, optimize at compile
 | OP '(' value ')' EOL { y_add_opdata($1, CPU_ADDR_MODE_INDIRECT, $3); parser_line++; } // Must be WORD
 | OP '(' value ',' XREG ')' EOL { y_add_opdata($1, CPU_ADDR_MODE_IND_X, $3); parser_line++; } // Must be BYTE
 | OP '(' value ')' ',' YREG EOL { y_add_opdata($1, CPU_ADDR_MODE_IND_Y, $3); parser_line++; } // Must be BYTE
+| LABEL EQ WORD EOL { y_add_wordsym($1, $3); parser_line++; }
+| LABEL EQ BYTE EOL { y_add_bytesym($1, $3); parser_line++; }
+| LABEL '=' WORD EOL { y_add_wordsym($1, $3); parser_line++; }
+| LABEL '=' BYTE EOL { y_add_bytesym($1, $3); parser_line++; }
 | LABEL { y_add_label($1); } /* an address label */
 | EOL { parser_line++; }
 | '*' '=' WORD EOL { y_add_offset($3); parser_line++; }
-| LABEL '=' WORD EOL { y_add_wordsym($1, $3); parser_line++; }
-| LABEL '=' BYTE EOL { y_add_bytesym($1, $3); parser_line++; }
+| ORG WORD EOL { y_add_offset($2); parser_line++; }
 | BYTELITERAL bytestring EOL { parser_line++; }
 | BYTELITERAL STRING EOL { y_add_string($2); parser_line++; }
 | WORDLITERAL wordstring EOL { parser_line++; }

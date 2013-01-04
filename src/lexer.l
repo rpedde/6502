@@ -135,9 +135,11 @@ x                              { return(XREG); }
 y                              { return(YREG); }
 a                              { return(AREG); }
 
+equ                            { return(EQ); }
+(org|\.org)                    { return(ORG); }
 
-(db|\.byte)                    { return(BYTELITERAL); }
-(dw|\.word)                    { return(WORDLITERAL); }
+(\.db|db|\.byte)               { return(BYTELITERAL); }
+(\.dw|dw|\.word)               { return(WORDLITERAL); }
 
 {hex_byte}                     { sscanf(&yytext[1],"%02x",&tempint); yylval.byte = tempint; return(BYTE); }
 {hex_word}                     { sscanf(&yytext[1],"%04x",&tempint); yylval.word = tempint; return(WORD); }

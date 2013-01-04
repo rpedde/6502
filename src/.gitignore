@@ -5,3 +5,4 @@ emulator
 stepif
 lexer.c
 parser.c
+parser.h
