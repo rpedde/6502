@@ -110,7 +110,7 @@ void pass2(void) {
     while(pcurrent) {
         if (pcurrent->data->type == TYPE_INSTRUCTION) {
             if(pcurrent->data->value)
-                operand = y_evaluate_val(pcurrent->data->value, pcurrent->data->line, 0);
+                operand = y_evaluate_val(pcurrent->data->value, pcurrent->data->line, pcurrent->data->offset);
 
             switch(pcurrent->data->addressing_mode) {
             case CPU_ADDR_MODE_IMPLICIT:
@@ -325,8 +325,8 @@ FILE *make_fh(char *basename, char *extension, int binary) {
 }
 
 
-void write_output(char *basename, int write_map, int split_bin) {
-    FILE *map = NULL, *bin = NULL;
+void write_output(char *basename, int write_map, int write_bin, int write_hex, int split_bin) {
+    FILE *map = NULL, *bin = NULL, *hex = NULL;
     opdata_list_t *pcurrent = list.next;
     int len;
     symtable_t *psym;
@@ -360,7 +360,8 @@ void write_output(char *basename, int write_map, int split_bin) {
         fprintf(map, "\n\nOutput:\n=======================================================\n\n");
 
         while(pcurrent) {
-            if(pcurrent->data->type == TYPE_INSTRUCTION) {
+            switch(pcurrent->data->type) {
+            case TYPE_INSTRUCTION:
                 len = 0;
                 len = fprintf(map,"%04x: %02x ", pcurrent->data->offset,
                               pcurrent->data->opcode);
@@ -419,7 +420,8 @@ void write_output(char *basename, int write_map, int split_bin) {
                 }
 
                 fprintf(map, "\n");
-            } else if(pcurrent->data->type == TYPE_DATA) {
+                break;
+            case TYPE_DATA:
                 len = 0;
                 len = fprintf(map,"%04x: ", pcurrent->data->offset);
                 if(pcurrent->data->value->type == Y_TYPE_BYTE) {
@@ -444,90 +446,148 @@ void write_output(char *basename, int write_map, int split_bin) {
                     exit(EXIT_FAILURE);
                 }
                 fprintf(map, "\n");
+                break;
+            case TYPE_OFFSET:
+                fprintf(map, "\n");
+                break;
+            case TYPE_LABEL:
+                break;
+            default:
+                DPRINTF(DBG_ERROR, "unhandled optype while printing map\n");
+                exit (EXIT_FAILURE);
             }
             pcurrent = pcurrent->next;
         }
         fclose(map);
     }
 
-    /* we always want to write the bin */
-    bin = make_fh(basename, "bin", 1);
+    if((write_bin) || (write_hex)) {
+        pcurrent = list.next;
+        current_offset = pcurrent->data->offset;
 
-    pcurrent = list.next;
-    current_offset = pcurrent->data->offset;
-
-    /* fast forward to the real start */
-    while(pcurrent && (pcurrent->data->type == TYPE_OFFSET)) {
-        DPRINTF(DBG_DEBUG, "Found offset instruction for $%04x\n", pcurrent->data->value->word);
-        current_offset = pcurrent->data->value->word;
-        pcurrent = pcurrent->next;
-    }
-
-    DPRINTF(DBG_INFO, "Fast-forwarded offset to $%04x\n", current_offset);
-
-    while(pcurrent) {
-        switch (pcurrent->data->type) {
-        case TYPE_INSTRUCTION:
-            fprintf(bin, "%c", pcurrent->data->opcode);
-            if(pcurrent->data->len == 2)
-                fprintf(bin, "%c", pcurrent->data->value->byte);
-            else if(pcurrent->data->len == 3)
-                fprintf(bin, "%c%c", pcurrent->data->value->word & 0x00ff,
-                        (pcurrent->data->value->word >> 8) & 0x00ff);
-
-            current_offset += pcurrent->data->len;
-            break;
-        case TYPE_DATA:
-            switch(pcurrent->data->value->type) {
-            case Y_TYPE_BYTE:
-                fprintf(bin,"%c", pcurrent->data->value->byte);
-                break;
-            case Y_TYPE_WORD:
-                fprintf(bin,"%c%c",
-                        (pcurrent->data->value->word & 0x00FF),
-                        (pcurrent->data->value->word & 0xFF00) >> 8);
-                break;
-            case Y_TYPE_LABEL:
-                pvalue = y_evaluate_val(pcurrent->data->value,
-                                        pcurrent->data->line,
-                                        pcurrent->data->offset);
-                fprintf(bin, "%c%c",
-                        (pvalue->word & 0x00FF),
-                        (pvalue->word & 0xFF00) >> 8);
-                break;
-            default:
-                DPRINTF(DBG_ERROR, "Bad TYPE_DATA writing bin file: %d\n", pcurrent->data->type);
-                exit(EXIT_FAILURE);
-            }
-            current_offset += pcurrent->data->len;
-            break;
-
-        case TYPE_LABEL:
-            break;
-
-        case TYPE_OFFSET:
-            /* we would open a new binfile here, if we were splitting */
-            if (pcurrent->data->offset != current_offset) {
-                /* we have a gap.  we fill if we're not doing splits, or if the
-                 * split is less than the min_split_gap */
-                DPRINTF(DBG_DEBUG, "Filling gap to $%04x\n", pcurrent->data->value->word);
-                while(current_offset < pcurrent->data->value->word) {
-                    fprintf(bin, "%c", skip_data_byte);
-                    current_offset++;
-                }
-            }
+        /* fast forward to the real start */
+        while(pcurrent && (pcurrent->data->type == TYPE_OFFSET)) {
+            DPRINTF(DBG_DEBUG, "Found offset instruction for $%04x\n", pcurrent->data->value->word);
             current_offset = pcurrent->data->value->word;
-            break;
-
-        default:
-            fprintf(stderr, "unhandled data type: %d", pcurrent->data->type);
-            exit(EXIT_FAILURE);
+            pcurrent = pcurrent->next;
         }
 
-        pcurrent = pcurrent->next;
-    }
 
-    fclose(bin);
+        /* map done, write bin and hex, if we want them */
+        if(write_bin) {
+            if (split_bin) {
+                char *tmp_filename = NULL;
+                asprintf(&tmp_filename, "%04X.bin", current_offset);
+                if(!tmp_filename) {
+                    perror("malloc");
+                    exit(EXIT_FAILURE);
+                }
+                bin = make_fh(basename, tmp_filename, 1);
+                free(tmp_filename);
+            } else {
+                bin = make_fh(basename, "bin", 1);
+            }
+        }
+
+        if(write_hex)
+            hex = make_fh(basename, "hex", 0);
+
+
+        DPRINTF(DBG_INFO, "Fast-forwarded offset to $%04x\n", current_offset);
+
+        while(pcurrent) {
+            switch (pcurrent->data->type) {
+            case TYPE_INSTRUCTION:
+                if(write_bin) {
+                    fprintf(bin, "%c", pcurrent->data->opcode);
+                    if(pcurrent->data->len == 2)
+                        fprintf(bin, "%c", pcurrent->data->value->byte);
+                    else if(pcurrent->data->len == 3)
+                        fprintf(bin, "%c%c", pcurrent->data->value->word & 0x00ff,
+                                (pcurrent->data->value->word >> 8) & 0x00ff);
+                }
+
+                current_offset += pcurrent->data->len;
+                break;
+            case TYPE_DATA:
+                switch(pcurrent->data->value->type) {
+                case Y_TYPE_BYTE:
+                    if(write_bin)
+                        fprintf(bin,"%c", pcurrent->data->value->byte);
+                    break;
+                case Y_TYPE_WORD:
+                    if(write_bin)
+                        fprintf(bin,"%c%c",
+                                (pcurrent->data->value->word & 0x00FF),
+                                (pcurrent->data->value->word & 0xFF00) >> 8);
+                    break;
+                case Y_TYPE_LABEL:
+                    pvalue = y_evaluate_val(pcurrent->data->value,
+                                            pcurrent->data->line,
+                                            pcurrent->data->offset);
+                    if(write_bin)
+                        fprintf(bin, "%c%c",
+                                (pvalue->word & 0x00FF),
+                                (pvalue->word & 0xFF00) >> 8);
+                    break;
+                default:
+                    DPRINTF(DBG_ERROR, "Bad TYPE_DATA writing bin file: %d\n", pcurrent->data->type);
+                    exit(EXIT_FAILURE);
+                }
+                current_offset += pcurrent->data->len;
+                break;
+
+            case TYPE_LABEL:
+                break;
+
+            case TYPE_OFFSET:
+                /* we would open a new binfile here, if we were splitting */
+                if (pcurrent->data->value->word != current_offset) {
+                    /* we have a gap.  we fill if we're not doing splits, or if the
+                     * split is less than the min_split_gap */
+                    if(write_bin) {
+                        if (((pcurrent->data->value->word - current_offset) < min_split_gap) || (!split_bin)) {
+                            DPRINTF(DBG_DEBUG, "Filling %d byte gap to $%04x\n",
+                                    pcurrent->data->value->word - current_offset, pcurrent->data->value->word);
+
+                            while(current_offset < pcurrent->data->value->word) {
+                                fprintf(bin, "%c", skip_data_byte);
+                                current_offset++;
+                            }
+                        } else { /* split bins with excessive gap */
+                            char *tmp_filename = NULL;
+
+                            fclose(bin);
+
+                            asprintf(&tmp_filename, "%04X.bin", pcurrent->data->value->word);
+                            if(!tmp_filename) {
+                                perror("malloc");
+                                exit(EXIT_FAILURE);
+                            }
+                            bin = make_fh(basename, tmp_filename, 1);
+                            free(tmp_filename);
+                        }
+                    }
+
+                    /* hex doesn't need to gap fill... we'll just start a new line */
+                }
+                current_offset = pcurrent->data->value->word;
+                break;
+
+            default:
+                fprintf(stderr, "unhandled data type: %d", pcurrent->data->type);
+                exit(EXIT_FAILURE);
+            }
+
+            pcurrent = pcurrent->next;
+        }
+
+        if(write_bin)
+            fclose(bin);
+
+        if(write_hex)
+            fclose(hex);
+    }
 
 }
 
@@ -537,17 +597,39 @@ int main(int argc, char *argv[]) {
     int option;
     char *basepath;
     char *suffix;
+    int do_split = 0;
+    int do_map = 1;
+    int do_bin = 1;
+    int do_hex = 0;
+
     value_t star_symbol = { Y_TYPE_WORD, 0, 0, "*", NULL, NULL };
 
     debug_level(2);
 
-    while((option = getopt(argc, argv, "d:")) != -1) {
+    while((option = getopt(argc, argv, "d:smbh")) != -1) {
         switch(option) {
+        case 's':
+            do_split = 1;
+            break;
+
+        case 'm':
+            do_map = 0;
+            break;
+
+        case 'b':
+            do_bin = 0;
+            break;
+
+        case 'h':
+            do_hex = 1;
+            break;
+
         case 'd':
             debug_level(atoi(optarg));
             break;
+
         default:
-            fprintf(stderr,"Srsly?");
+            fprintf(stderr,"Unknown option %c", option);
             exit(EXIT_FAILURE);
         }
     }
@@ -588,7 +670,8 @@ int main(int argc, char *argv[]) {
     pass2();
     pass3();
 
-    write_output(basepath, 1, 0);
+    /* default: map and split bin */
+    write_output(basepath, do_map, do_bin, do_hex, do_split);
 
     DPRINTF(DBG_INFO, "Done.\n");
     exit(EXIT_SUCCESS);
