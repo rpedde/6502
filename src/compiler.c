@@ -26,6 +26,11 @@
 #include "parser.h"
 #include "getopt.h"
 
+#define MIN_SPLIT_GAP 32
+
+uint16_t min_split_gap = MIN_SPLIT_GAP;
+uint8_t skip_data_byte = 0xea;
+
 extern FILE *yyin;
 extern int yyparse(void*);
 
@@ -292,9 +297,10 @@ void pass3(void) {
     }
 }
 
-FILE *make_fh(char *basename, char *extension) {
+FILE *make_fh(char *basename, char *extension, int binary) {
     FILE *fh;
     char *filename = NULL;
+    char *mode = NULL;
 
     asprintf(&filename, "%s.%s", basename, extension);
     if(!filename) {
@@ -302,7 +308,13 @@ FILE *make_fh(char *basename, char *extension) {
         exit(EXIT_FAILURE);
     }
 
-    if(!(fh = fopen(filename,"w"))) {
+    if (binary) {
+        mode = "w";
+    } else {
+        mode = "wb";
+    }
+
+    if(!(fh = fopen(filename, mode))) {
         free(filename);
         perror("fopen");
         exit(EXIT_FAILURE);
@@ -319,9 +331,10 @@ void write_output(char *basename, int write_map, int split_bin) {
     int len;
     symtable_t *psym;
     uint16_t current_offset;
+    value_t *pvalue;
 
     if(write_map) {
-        map = make_fh(basename, "map");
+        map = make_fh(basename, "map", 0);
         DPRINTF(DBG_INFO, "Writing output.\n");
 
         fprintf(map, "Symbol Table:\n=======================================================\n\n");
@@ -420,12 +433,12 @@ void write_output(char *basename, int write_map, int split_bin) {
                     fprintf(map, "%*c", 20 - len, ' ');
                     fprintf(map, ".data %04x", pcurrent->data->value->word);
                 } else if(pcurrent->data->value->type == Y_TYPE_LABEL) {
-                    value_t *psym = y_evaluate_val(pcurrent->data->value, pcurrent->data->line, pcurrent->data->offset);
+                    pvalue = y_evaluate_val(pcurrent->data->value, pcurrent->data->line, pcurrent->data->offset);
                     len += fprintf(map, "%02x %02x",
-                                   (psym->word & 0x00FF),
-                                   (psym->word & 0xFF00) >> 8);
+                                   (pvalue->word & 0x00FF),
+                                   (pvalue->word & 0xFF00) >> 8);
                     fprintf(map, "%*c", 20 - len, ' ');
-                    fprintf(map, ".data %04x", psym->word);
+                    fprintf(map, ".data %04x", pvalue->word);
                 } else {
                     DPRINTF(DBG_ERROR, "Bad Y-type in static data\n");
                     exit(EXIT_FAILURE);
@@ -438,13 +451,23 @@ void write_output(char *basename, int write_map, int split_bin) {
     }
 
     /* we always want to write the bin */
-    bin = make_fh(basename, "bin");
+    bin = make_fh(basename, "bin", 1);
 
     pcurrent = list.next;
     current_offset = pcurrent->data->offset;
 
+    /* fast forward to the real start */
+    while(pcurrent && (pcurrent->data->type == TYPE_OFFSET)) {
+        DPRINTF(DBG_DEBUG, "Found offset instruction for $%04x\n", pcurrent->data->value->word);
+        current_offset = pcurrent->data->value->word;
+        pcurrent = pcurrent->next;
+    }
+
+    DPRINTF(DBG_INFO, "Fast-forwarded offset to $%04x\n", current_offset);
+
     while(pcurrent) {
-        if(pcurrent->data->type == TYPE_INSTRUCTION) {
+        switch (pcurrent->data->type) {
+        case TYPE_INSTRUCTION:
             fprintf(bin, "%c", pcurrent->data->opcode);
             if(pcurrent->data->len == 2)
                 fprintf(bin, "%c", pcurrent->data->value->byte);
@@ -452,13 +475,60 @@ void write_output(char *basename, int write_map, int split_bin) {
                 fprintf(bin, "%c%c", pcurrent->data->value->word & 0x00ff,
                         (pcurrent->data->value->word >> 8) & 0x00ff);
 
-        } else if(pcurrent->data->type == TYPE_DATA) {
+            current_offset += pcurrent->data->len;
+            break;
+        case TYPE_DATA:
+            switch(pcurrent->data->value->type) {
+            case Y_TYPE_BYTE:
                 fprintf(bin,"%c", pcurrent->data->value->byte);
+                break;
+            case Y_TYPE_WORD:
+                fprintf(bin,"%c%c",
+                        (pcurrent->data->value->word & 0x00FF),
+                        (pcurrent->data->value->word & 0xFF00) >> 8);
+                break;
+            case Y_TYPE_LABEL:
+                pvalue = y_evaluate_val(pcurrent->data->value,
+                                        pcurrent->data->line,
+                                        pcurrent->data->offset);
+                fprintf(bin, "%c%c",
+                        (pvalue->word & 0x00FF),
+                        (pvalue->word & 0xFF00) >> 8);
+                break;
+            default:
+                DPRINTF(DBG_ERROR, "Bad TYPE_DATA writing bin file: %d\n", pcurrent->data->type);
+                exit(EXIT_FAILURE);
+            }
+            current_offset += pcurrent->data->len;
+            break;
+
+        case TYPE_LABEL:
+            break;
+
+        case TYPE_OFFSET:
+            /* we would open a new binfile here, if we were splitting */
+            if (pcurrent->data->offset != current_offset) {
+                /* we have a gap.  we fill if we're not doing splits, or if the
+                 * split is less than the min_split_gap */
+                DPRINTF(DBG_DEBUG, "Filling gap to $%04x\n", pcurrent->data->value->word);
+                while(current_offset < pcurrent->data->value->word) {
+                    fprintf(bin, "%c", skip_data_byte);
+                    current_offset++;
+                }
+            }
+            current_offset = pcurrent->data->value->word;
+            break;
+
+        default:
+            fprintf(stderr, "unhandled data type: %d", pcurrent->data->type);
+            exit(EXIT_FAILURE);
         }
 
         pcurrent = pcurrent->next;
-        fclose(bin);
     }
+
+    fclose(bin);
+
 }
 
 int main(int argc, char *argv[]) {
