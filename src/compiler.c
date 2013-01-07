@@ -27,9 +27,11 @@
 #include "getopt.h"
 
 #define MIN_SPLIT_GAP 32
+#define HEX_BYTES_PER_LINE 16
 
 uint16_t min_split_gap = MIN_SPLIT_GAP;
 uint8_t skip_data_byte = 0xea;
+uint8_t hex_bytes_per_line = HEX_BYTES_PER_LINE;
 
 extern FILE *yyin;
 extern int yyparse(void*);
@@ -47,8 +49,58 @@ typedef struct opdata_list_t_struct {
 opdata_list_t list = { NULL, NULL };
 opdata_list_t *list_tailp = &list;
 
+typedef struct hex_line_t_struct {
+    uint16_t start_addr;
+    uint8_t current_byte_count;
+    uint8_t bytes[16];
+} hex_line_t;
+
 extern void set_offset(uint16_t offset) {
     compiler_offset = offset;
+}
+
+void hexline_flush(FILE *fh, hex_line_t *hexline) {
+    uint8_t checksum = 0;
+    uint8_t byte;
+
+    if(!hexline->current_byte_count)
+        return;
+
+    fprintf(fh, ":");
+    fprintf(fh, "%02X", hexline->current_byte_count);
+    checksum += hexline->current_byte_count;
+    fprintf(fh, "%04X", hexline->start_addr);
+    checksum += (hexline->start_addr & 0xFF00) >> 8;
+    checksum += (hexline->start_addr) & 0xFF;
+    fprintf(fh, "00");
+    for(byte = 0; byte < hexline->current_byte_count; byte++) {
+        fprintf(fh, "%02X", hexline->bytes[byte]);
+        checksum += (hexline->bytes[byte]);
+    }
+
+    /* twos compliment */
+    checksum  ^= 0xFF;
+    checksum += 1;
+
+    fprintf(fh, "%02X", checksum);
+    fprintf(fh, "\n");
+}
+
+void add_hexline_byte(FILE *fh, hex_line_t *hexline, uint16_t addr, uint8_t byte) {
+    if((hexline->start_addr + hexline->current_byte_count) != addr) {
+        /* flush the current line */
+        hexline_flush(fh, hexline);
+        memset(hexline, 0, sizeof(hex_line_t));
+        hexline->start_addr = addr;
+    }
+
+    hexline->bytes[hexline->current_byte_count++] = byte;
+    if(hexline->current_byte_count == hex_bytes_per_line) {
+        /* flush the current line */
+        hexline_flush(fh, hexline);
+        memset(hexline, 0, sizeof(hex_line_t));
+        hexline->start_addr = addr + 1;
+    }
 }
 
 void add_opdata(opdata_t *pnew) {
@@ -332,6 +384,7 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
     symtable_t *psym;
     uint16_t current_offset;
     value_t *pvalue;
+    hex_line_t hexline;
 
     if(write_map) {
         map = make_fh(basename, "map", 0);
@@ -462,6 +515,8 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
     }
 
     if((write_bin) || (write_hex)) {
+        memset(&hexline, 0, sizeof(hex_line_t));
+
         pcurrent = list.next;
         current_offset = pcurrent->data->offset;
 
@@ -507,6 +562,16 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
                                 (pcurrent->data->value->word >> 8) & 0x00ff);
                 }
 
+                if(write_hex) {
+                    add_hexline_byte(hex, &hexline, current_offset, pcurrent->data->opcode);
+                    if(pcurrent->data->len == 2)
+                        add_hexline_byte(hex, &hexline, current_offset + 1, pcurrent->data->value->byte);
+                    if(pcurrent->data->len == 3) {
+                        add_hexline_byte(hex, &hexline, current_offset + 1, (pcurrent->data->value->word) & 0x00FF);
+                        add_hexline_byte(hex, &hexline, current_offset + 2, (pcurrent->data->value->word >> 8) & 0x00FF);
+                    }
+                }
+
                 current_offset += pcurrent->data->len;
                 break;
             case TYPE_DATA:
@@ -514,13 +579,21 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
                 case Y_TYPE_BYTE:
                     if(write_bin)
                         fprintf(bin,"%c", pcurrent->data->value->byte);
+                    if(write_hex)
+                        add_hexline_byte(hex, &hexline, current_offset, pcurrent->data->value->byte);
                     break;
+
                 case Y_TYPE_WORD:
                     if(write_bin)
                         fprintf(bin,"%c%c",
                                 (pcurrent->data->value->word & 0x00FF),
                                 (pcurrent->data->value->word & 0xFF00) >> 8);
+                    if(write_hex) {
+                        add_hexline_byte(hex, &hexline, current_offset, pcurrent->data->value->word & 0x00FF);
+                        add_hexline_byte(hex, &hexline, current_offset+1, (pcurrent->data->value->word & 0xFF00) >> 8);
+                    }
                     break;
+
                 case Y_TYPE_LABEL:
                     pvalue = y_evaluate_val(pcurrent->data->value,
                                             pcurrent->data->line,
@@ -529,7 +602,13 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
                         fprintf(bin, "%c%c",
                                 (pvalue->word & 0x00FF),
                                 (pvalue->word & 0xFF00) >> 8);
+
+                    if(write_hex) {
+                        add_hexline_byte(hex, &hexline, current_offset, pvalue->word & 0x00FF);
+                        add_hexline_byte(hex, &hexline, current_offset + 1, (pvalue->word >> 8) & 0x00FF);
+                    }
                     break;
+
                 default:
                     DPRINTF(DBG_ERROR, "Bad TYPE_DATA writing bin file: %d\n", pcurrent->data->type);
                     exit(EXIT_FAILURE);
@@ -570,6 +649,10 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
                     }
 
                     /* hex doesn't need to gap fill... we'll just start a new line */
+                    if(write_hex) {
+                        hexline_flush(hex, &hexline);
+                        memset(&hexline, 0, sizeof(hex_line_t));
+                    }
                 }
                 current_offset = pcurrent->data->value->word;
                 break;
@@ -585,10 +668,12 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
         if(write_bin)
             fclose(bin);
 
-        if(write_hex)
+        if(write_hex) {
+            hexline_flush(hex, &hexline);
+            fprintf(hex, ":00000001FF\n");
             fclose(hex);
+        }
     }
-
 }
 
 int main(int argc, char *argv[]) {
