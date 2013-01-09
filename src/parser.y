@@ -396,6 +396,9 @@ void y_add_label(char *label) {
     value_t *value;
     opdata_t *pvalue;
 
+    while(strlen(label) && (label[strlen(label) - 1] == ':'))
+        label[strlen(label) - 1] = 0;
+
     DPRINTF(DBG_DEBUG, " - Adding address label '%s'\n", label);
 
     /* we don't really know the address until we determine indexing
