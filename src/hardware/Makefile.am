@@ -1,6 +1,12 @@
 pkglibdir=$(libdir)/6502
-pkglib_LTLIBRARIES=memory.la
+pkglib_LTLIBRARIES=memory.la uart-16550.la
 
-memory_la_SOURCES = memory.c hw-common.h hw-common.c
+memory_la_SOURCES = memory.c hw-common.h hw-common.c ../hardware.h
 memory_la_CPPFLAGS = -I..
 memory_la_LDFLAGS = -module -avoid-version -shared
+
+uart_16550_la_SOURCES = uart-16550.c uart-16550.h hw-common.h hw-common.c ../hardware.h
+uart_16550_la_CPPFLAGS = -I..
+uart_16550_la_LDFLAGS = -module -avoid-version -shared
+
+EXTRA_DIST = skeleton.c

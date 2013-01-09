@@ -10,3 +10,5 @@ compiler_SOURCES = compiler.c compiler.h opcodes.h parser.y lexer.l debug.c debu
 
 stepif_SOURCES = stepif.c stepif.h libtui.c libtui.h
 stepif_LDFLAGS = $(libcurses_LIBS)
+
+SUBDIRS = hardware
