@@ -51,7 +51,7 @@
 #define MCR_LOOP    0x10
 
 #define LSR_DR      0x01 /* data ready */
-#define LSR_OE      0x02 /* overrun enable */
+#define LSR_OE      0x02 /* overrun error */
 #define LSR_PE      0x04 /* parity error */
 #define LSR_FE      0x08 /* framing error */
 #define LSR_BI      0x10 /* break interrupt */

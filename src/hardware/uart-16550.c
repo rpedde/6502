@@ -28,6 +28,8 @@
 #include "hw-common.h"
 #include "uart-16550.h"
 
+#define UART_MAX_BUFFER 16
+
 hw_reg_t *init(hw_config_t *config);
 static uint8_t uart_memop(hw_reg_t *hw, uint16_t addr, uint8_t memop, uint8_t data);
 static void *listener_proc(void *arg);
@@ -46,6 +48,10 @@ typedef struct uart_state_t {
     uint8_t DLM; /* divisor latch (msb) */
 
     int pty;
+    int head_buffer_pos;
+    int tail_buffer_pos;
+
+    int buffer[UART_MAX_BUFFER];
     pthread_t listener_tid;
     pthread_mutex_t state_lock;
 } uart_state_t;
@@ -53,6 +59,7 @@ typedef struct uart_state_t {
 static void lock_state(uart_state_t *state);
 static void unlock_state(uart_state_t *state);
 static void receive_byte(uart_state_t *state, uint8_t byte);
+static void recalculate_irq(uart_state_t *state);
 
 hw_reg_t *init(hw_config_t *config) {
     hw_reg_t *uart_reg;
@@ -129,7 +136,20 @@ hw_reg_t *init(hw_config_t *config) {
 }
 
 /**
- * lock the state blob when producing or consuming
+ * we aren't honoring irq yet
+ * caller must be holding state lock.
+ *
+ * @param state uart state
+ */
+void recalculate_irq(uart_state_t *state) {
+    /* nothing to see here */
+}
+
+/**
+ * Lock the state blob when producing or consuming.  It either
+ * succeeds, or we exit.
+ *
+ * @param state uart state to be locked
  */
 void lock_state(uart_state_t *state) {
     int res;
@@ -141,7 +161,10 @@ void lock_state(uart_state_t *state) {
 }
 
 /**
- * and conversely, unlock the state blob.
+ * and conversely, unlock the state blob.  Again, if this does
+ * not succeed, bad things are afoot and we crash.
+ *
+ * @param state uart state to be unlocked
  */
 
 void unlock_state(uart_state_t *state) {
@@ -154,17 +177,37 @@ void unlock_state(uart_state_t *state) {
 }
 
 /**
- * do the needful when we receive a new async byte
+ * do the needful when we receive a new async byte.  This
+ * should update the fifo, recalculate whether or not we
+ * should be holding irq low, etc.
+ *
+ * @param state uart state (unlocked)
+ * @param byte data byte received
  */
 void receive_byte(uart_state_t *state, uint8_t byte) {
     lock_state(state);
-    /* throw it away! */
+
+    if(((state->head_buffer_pos + 1) % UART_MAX_BUFFER) == state->tail_buffer_pos) {
+        /* we just dropped a char */
+        state->LSR = state->LSR | LSR_OE;
+    } else {
+        state->buffer[state->head_buffer_pos] = byte;
+        state->head_buffer_pos = (state->head_buffer_pos + 1) % UART_MAX_BUFFER;
+        /* mark rx available */
+        state->LSR = state->LSR | LSR_DR;
+    }
+
+    recalculate_irq(state);
+
     unlock_state(state);
 }
 
 
 /**
- * async listener for pty
+ * Async listener for pty.  This listens on the pty and
+ * any received bytes get passed to the receive_byte function.
+ *
+ * @param arg a void* cast state blob
  */
 void *listener_proc(void *arg) {
     uart_state_t *state = (uart_state_t*)arg;
@@ -189,7 +232,6 @@ void *listener_proc(void *arg) {
 }
 
 
-
 /**
  * Perform a memory operation on a registered memory address
  *
@@ -203,6 +245,7 @@ uint8_t uart_memop(hw_reg_t *hw, uint16_t addr, uint8_t memop, uint8_t data) {
     uint16_t addr_offset = addr - hw->remap[0].mem_start;
     int read = (memop == MEMOP_READ);
     int dlab = (state->LCR & LCR_DLAB);
+    uint8_t retval;
 
     switch(addr_offset) {
     case 0: /* RBR, THR, DLL */
@@ -211,8 +254,23 @@ uint8_t uart_memop(hw_reg_t *hw, uint16_t addr, uint8_t memop, uint8_t data) {
                 return state->DLL;
             state->DLL = data;
         } else {
-            if(read)
-                return state->RBR;
+            if(read) {
+                /* pull something out of the receive buffer */
+                lock_state(state);
+                if(state->head_buffer_pos == state->tail_buffer_pos) {
+                    /* nothing in the buffer */
+                    retval = 0;
+                } else {
+                    retval = state->buffer[state->tail_buffer_pos];
+                    state->tail_buffer_pos++;
+                    if(state->tail_buffer_pos == state->head_buffer_pos) {
+                        /* fifo is empty */
+                        recalculate_irq(state);
+                    }
+                }
+                unlock_state(state);
+                return retval;
+            }
 
             /* write to THR -- drop the byte out the pts */
             write(state->pty, &data, 1);
@@ -250,14 +308,27 @@ uint8_t uart_memop(hw_reg_t *hw, uint16_t addr, uint8_t memop, uint8_t data) {
         break;
 
     case 5:
-        if(read)
-            return state->LSR;
+        if(read) {
+            /* error flags reset on read */
+            lock_state(state);
+            retval = state->LSR;
+            state->LSR &= ~(LSR_OE | LSR_PE | LSR_FE | LSR_BI | LSR_ERF);
+            unlock_state(state);
+            return retval;
+        }
         state->LSR = data;
         break;
 
     case 6:
-        if(read)
-            return state->MSR;
+        if(read) {
+            lock_state(state);
+            retval = state->MSR;
+            /* we clear the delta states on msr read */
+            state->MSR &= ~(MSR_DCTS | MSR_DDSR | MSR_DDCD | MSR_TERI);
+            unlock_state(state);
+            return retval;
+
+        }
         state->MSR = data;
         break;
 
