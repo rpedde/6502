@@ -121,11 +121,12 @@ int main(int argc, char *argv[]) {
     char *configfile = DEFAULT_CONFIG_FILE;
     int option;
     int step = 0;
+    int debuglevel = 2;
 
     while((option = getopt(argc, argv, "d:sc:")) != -1) {
         switch(option) {
         case 'd':
-            debug_level(atoi(optarg));
+            debuglevel = atoi(optarg);
             break;
 
         case 'c':
@@ -142,6 +143,8 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    debug_level(debuglevel);
+
     config_init(&main_config);
     if(config_read_file(&main_config, configfile) != CONFIG_TRUE) {
         DPRINTF(DBG_FATAL,"Can't read config file (%s, line %d): %s\n",
@@ -155,7 +158,6 @@ int main(int argc, char *argv[]) {
     if(!load_memory())
         exit(EXIT_FAILURE);
 
-    debug_level(DBG_DEBUG);
     cpu_init();
 
     if(step) {
