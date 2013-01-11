@@ -190,6 +190,7 @@ void receive_byte(uart_state_t *state, uint8_t byte) {
     if(((state->head_buffer_pos + 1) % UART_MAX_BUFFER) == state->tail_buffer_pos) {
         /* we just dropped a char */
         state->LSR = state->LSR | LSR_OE;
+        fprintf(stderr, "just dropped byte\n");
     } else {
         state->buffer[state->head_buffer_pos] = byte;
         state->head_buffer_pos = (state->head_buffer_pos + 1) % UART_MAX_BUFFER;
@@ -228,6 +229,7 @@ void *listener_proc(void *arg) {
         }
 
         receive_byte(state, byte);
+        fprintf(stderr, "got byte $%02x\n", byte);
     }
 }
 
@@ -260,14 +262,17 @@ uint8_t uart_memop(hw_reg_t *hw, uint16_t addr, uint8_t memop, uint8_t data) {
                 if(state->head_buffer_pos == state->tail_buffer_pos) {
                     /* nothing in the buffer */
                     retval = 0;
+                    fprintf(stderr, "read on empty fifo\n");
                 } else {
                     retval = state->buffer[state->tail_buffer_pos];
-                    state->tail_buffer_pos++;
+                    state->tail_buffer_pos = (state->tail_buffer_pos + 1) % UART_MAX_BUFFER;
                     if(state->tail_buffer_pos == state->head_buffer_pos) {
                         /* fifo is empty */
+                        state->LSR &= ~LSR_DR;
                         recalculate_irq(state);
                     }
                 }
+
                 unlock_state(state);
                 return retval;
             }
