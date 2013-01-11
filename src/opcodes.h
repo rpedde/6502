@@ -125,7 +125,7 @@ int cpu_addressing_mode_length[] = {
     1, 1, 2,
     2, 2, 2, 2,
     3, 3, 3, 3,
-    3, 3
+    2, 2
 };
 
 typedef struct opcode_info_t_struct {
