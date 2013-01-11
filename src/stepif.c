@@ -648,10 +648,10 @@ void display_update(void) {
                 tui_putstring(pdisplay, "($%04x)", w);
                 break;
             case CPU_ADDR_MODE_IND_X:
-                tui_putstring(pdisplay, "($%04x,X)", w);
+                tui_putstring(pdisplay, "($%02x,X)", b);
                 break;
             case CPU_ADDR_MODE_IND_Y:
-                tui_putstring(pdisplay, "($%04x),Y", w);
+                tui_putstring(pdisplay, "($%02x),Y", b);
                 break;
             }
 
