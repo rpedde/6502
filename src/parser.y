@@ -110,7 +110,6 @@ line: OP EOL { y_add_opdata($1, CPU_ADDR_MODE_IMPLICIT, NULL); parser_line++; }
 | '*' '=' WORD EOL { y_add_offset($3); parser_line++; }
 | ORG WORD EOL { y_add_offset($2); parser_line++; }
 | BYTELITERAL bytestring EOL { parser_line++; }
-| BYTELITERAL STRING EOL { y_add_string($2); parser_line++; }
 | WORDLITERAL wordstring EOL { parser_line++; }
 ;
 
@@ -124,6 +123,7 @@ bytelvalue: BYTE { $$ = y_new_nval(Y_TYPE_BYTE, $1, NULL); }
 ;
 
 bytestring: bytelvalue { y_add_nval($1); }
+| STRING { y_add_string($1); }
 | bytestring ',' bytelvalue { y_add_nval($3); }
 ;
 
@@ -138,6 +138,13 @@ lvalue: wordlvalue
 value: lvalue { $$ = $1; }
 | lvalue '+' lvalue { $$ = y_create_arith($1, $3, '+'); }
 | lvalue '-' lvalue { $$ = y_create_arith($1, $3, '-'); }
+| lvalue '>' lvalue { $$ = y_create_arith($1, $3, '>'); }
+| lvalue '<' lvalue { $$ = y_create_arith($1, $3, '<'); }
+| lvalue '%' lvalue { $$ = y_create_arith($1, $3, '%'); }
+| lvalue '/' lvalue { $$ = y_create_arith($1, $3, '/'); }
+| lvalue '|' lvalue { $$ = y_create_arith($1, $3, '|'); }
+| lvalue '&' lvalue { $$ = y_create_arith($1, $3, '&'); }
+| lvalue '^' lvalue { $$ = y_create_arith($1, $3, '^'); }
 ;
 
 
@@ -234,18 +241,47 @@ value_t *y_evaluate_val(value_t *value, int line, uint16_t addr) {
         if(left->type == right->type) {
             retval->type = left->type;
         } else {
-            DPRINTF(DBG_WARN,"Line %d: Warning: Promoting BYTE value to WORD\n", line);
+            DPRINTF(DBG_DEBUG,"Line %d: Warning: Promoting BYTE value to WORD\n", line);
             retval->type = Y_TYPE_WORD;
         }
 
         switch(value->byte) {
         case '+':
             /* should we be checking for overflow? */
-            retval_val = right_val + left_val;
+            retval_val = left_val + right_val;
             break;
         case '-':
-            retval_val = right_val - left_val;
+            retval_val = left_val - right_val;
             break;
+
+        case '>':
+            retval_val = left_val >> right_val;
+            break;
+
+        case '<':
+            retval_val = left_val << right_val;
+            break;
+
+        case '%':
+            retval_val = left_val % right_val;
+            break;
+
+        case '/':
+            retval_val = left_val / right_val;
+            break;
+
+        case '|':
+            retval_val = left_val | right_val;
+            break;
+
+        case '&':
+            retval_val = left_val & right_val;
+            break;
+
+        case '^':
+            retval_val = left_val ^ right_val;
+            break;
+
         default:
             DPRINTF(DBG_ERROR, "Bad op: %c\n", value->byte);
             exit(EXIT_FAILURE);

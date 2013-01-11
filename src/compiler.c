@@ -184,12 +184,13 @@ void pass2(void) {
             case CPU_ADDR_MODE_ZPAGE_Y:
             case CPU_ADDR_MODE_IND_X:
             case CPU_ADDR_MODE_IND_Y:
+                /* these must be bytes, but we'll verify in the fixups */
                 /* verify byte-size operand */
-                if(operand->type == Y_TYPE_WORD) {
-                    DPRINTF(DBG_ERROR, "Line %d: Error:  Addressing mode requires BYTE, operand is WORD\n",
-                            pcurrent->data->line);
-                    exit(EXIT_FAILURE);
-                }
+                /* if(operand->type == Y_TYPE_WORD) { */
+                /*     DPRINTF(DBG_ERROR, "Line %d: Error:  Addressing mode requires BYTE, operand is WORD\n", */
+                /*             pcurrent->data->line); */
+                /*     exit(EXIT_FAILURE); */
+                /* } */
                 break;
 
             case CPU_ADDR_MODE_RELATIVE:
@@ -312,35 +313,61 @@ void pass3(void) {
 
             pcurrent->data->opcode = (uint8_t)opcode_lookup(pcurrent->data, pcurrent->data->line, 1);
 
-            /* FIX UP RELATIVE ADDRESSING HERE */
-            if(pcurrent->data->addressing_mode == CPU_ADDR_MODE_RELATIVE) {
-                effective_addr = pcurrent->data->offset + 2;
 
-                if(operand->type == Y_TYPE_WORD) {
-                    target_addr = operand->word;
-                    pcurrent->data->value->type = Y_TYPE_BYTE;
-
-                    offset = target_addr - effective_addr;
-                    if(offset < -128 || offset > 127) {
-                        DPRINTF(DBG_ERROR, "Line %d: Error:  Branch out of range\n",
+            switch(pcurrent->data->addressing_mode) {
+            case CPU_ADDR_MODE_IMMEDIATE:
+            case CPU_ADDR_MODE_ZPAGE:
+            case CPU_ADDR_MODE_ZPAGE_X:
+            case CPU_ADDR_MODE_ZPAGE_Y:
+            case CPU_ADDR_MODE_IND_X:
+            case CPU_ADDR_MODE_IND_Y:
+                /* these are byte.. if the data is word, see if we can
+                   safely demote it */
+                if(operand->type == Y_TYPE_WORD)  {
+                    if (operand->word > 255) {
+                        DPRINTF(DBG_ERROR,
+                                "Line %d: Error: Cannot coerce value to BYTE\n",
                                 pcurrent->data->line);
                         exit(EXIT_FAILURE);
-                    }
-
-                    if(offset < 0) {
-                        pcurrent->data->value->byte = abs(offset) ^ 0xFF;
-                        pcurrent->data->value->byte += 1;
                     } else {
-                        pcurrent->data->value->byte = offset;
+                        operand->type = Y_TYPE_BYTE;
+                        operand->byte = (operand->word & 0xff);
                     }
-                    DPRINTF(DBG_DEBUG, " - Line %d: Fixed up branch to $%02x\n",
-                            pcurrent->data->line,
-                            (uint16_t)pcurrent->data->value->byte);
-                } else {
-                    pcurrent->data->type = Y_TYPE_BYTE;
-                    pcurrent->data->value->byte = operand->byte;
                 }
-            } else {
+                pcurrent->data->value = operand;
+                break;
+
+            case CPU_ADDR_MODE_RELATIVE:
+                if(pcurrent->data->addressing_mode == CPU_ADDR_MODE_RELATIVE) {
+                    effective_addr = pcurrent->data->offset + 2;
+
+                    if(operand->type == Y_TYPE_WORD) {
+                        target_addr = operand->word;
+                        pcurrent->data->value->type = Y_TYPE_BYTE;
+
+                        offset = target_addr - effective_addr;
+                        if(offset < -128 || offset > 127) {
+                            DPRINTF(DBG_ERROR, "Line %d: Error:  Branch out of range\n",
+                                    pcurrent->data->line);
+                            exit(EXIT_FAILURE);
+                        }
+
+                        if(offset < 0) {
+                            pcurrent->data->value->byte = abs(offset) ^ 0xFF;
+                            pcurrent->data->value->byte += 1;
+                        } else {
+                            pcurrent->data->value->byte = offset;
+                        }
+                        DPRINTF(DBG_DEBUG, " - Line %d: Fixed up branch to $%02x\n",
+                                pcurrent->data->line,
+                                (uint16_t)pcurrent->data->value->byte);
+                    } else {
+                        pcurrent->data->type = Y_TYPE_BYTE;
+                        pcurrent->data->value->byte = operand->byte;
+                    }
+                }
+                break;
+            default:
                 /* finalize the rest */
                 pcurrent->data->value = operand;
             }
@@ -462,10 +489,10 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
                     fprintf(map, "($%04x)", pcurrent->data->value->word);
                     break;
                 case CPU_ADDR_MODE_IND_X:
-                    fprintf(map, "($%04x,X)", pcurrent->data->value->word);
+                    fprintf(map, "($%02x,X)", pcurrent->data->value->byte);
                     break;
                 case CPU_ADDR_MODE_IND_Y:
-                    fprintf(map, "($%04x),Y)", pcurrent->data->value->word);
+                    fprintf(map, "($%02x),Y", pcurrent->data->value->byte);
                     break;
                 default:
                     DPRINTF(DBG_ERROR,"Unknown addressing mode in map file\n");

@@ -150,7 +150,7 @@ equ                            { return(EQ); }
 [0-9]+                         { if(atoi(yytext) < 256) { yylval.byte = atoi(yytext); return(BYTE);
                                                         } else { yylval.word = atoi(yytext); return (WORD); }}
 
-\".\"                          { yylval.byte = yytext[1]; return(BYTE); }
+\'.\'                          { yylval.byte = yytext[1]; return(BYTE); }
 {qstring}                      { yylval.string = (char*)&(strdup(yytext)[1]);
                                  yylval.string[strlen(yylval.string) - 1] = '\0';
                                  return(STRING); }
