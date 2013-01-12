@@ -460,17 +460,30 @@ value_t *y_evaluate_val(value_t *value, int line, uint16_t addr) {
 
     if(value->type == Y_TYPE_ARITH) {
         if((!y_can_evaluate(value->left)) ||
-           (!y_can_evaluate(value->right)))
+           ((value->right) && (!y_can_evaluate(value->right))))
             return NULL;
 
         left = y_evaluate_val(value->left, line, addr);
-        right = y_evaluate_val(value->right, line, addr);
+        if(value->right)
+            right = y_evaluate_val(value->right, line, addr);
 
         retval = (value_t*)error_malloc(sizeof(value_t));
 
-        if((left->type == Y_TYPE_WORD) || (right->type == Y_TYPE_WORD)) {
+        if((left && right) && ((left->type == Y_TYPE_WORD) || (right->type == Y_TYPE_WORD))) {
             value_promote(left, line);
             value_promote(right, line);
+        }
+
+        if(left->type == Y_TYPE_WORD)
+            left_val = left->word;
+        else
+            left_val = left->byte;
+
+        if(right) {
+            if(right->type == Y_TYPE_WORD)
+                right_val = right->word;
+            else
+                right_val = right->byte;
         }
 
         switch(value->word) {
