@@ -21,12 +21,10 @@
 
 #include "opcodes.h"
 
-
 #define TYPE_INSTRUCTION 0x01
 #define TYPE_DATA        0x02
-#define TYPE_LABEL       0x03
-#define TYPE_OFFSET      0x04
-
+// #define TYPE_LABEL       0x03
+//#define TYPE_OFFSET      0x04
 
 #define Y_TYPE_BYTE  0
 #define Y_TYPE_WORD  1
@@ -36,7 +34,7 @@
 
 typedef struct value_t_struct {
     int type;
-    uint8_t byte;
+    uint8_t byte; /* this could be unioned */
     uint16_t word;
     char *label;
     struct value_t_struct *left;
@@ -49,7 +47,7 @@ typedef struct opdata_t_struct {
     uint8_t opcode;          /* INSTRUCTION */
     uint8_t addressing_mode; /* INSTRUCTION */
     value_t *value;          /* INSTRUCTION */
-    int needs_fixup;         /* INSTRUCTION */
+    int needs_fixup;         /* INSTRUCTION */ /* ?? */
     int len;                 /* ALL */
     int promote;
     int demote;
@@ -62,7 +60,10 @@ typedef struct symtable_t_struct {
     value_t *value;
     struct symtable_t_struct *next;
 } symtable_t;
+
 extern symtable_t symtable;
+extern int parser_line;
+extern uint16_t compiler_offset;
 
 #define CPU_ADDR_MODE_UNKNOWN    0x80
 #define CPU_ADDR_MODE_UNKNOWN_X  0x81
@@ -70,8 +71,16 @@ extern symtable_t symtable;
 
 extern uint16_t compiler_offset;     /* current compiler offset */
 extern void add_opdata(opdata_t*);
+
 extern value_t *y_lookup_symbol(char *label);
 extern value_t *y_evaluate_val(value_t *value, int line, uint16_t addr);
 extern void y_add_symtable(char *label, value_t *value);
+extern int y_value_is_byte(value_t *value);
+extern void value_promote(value_t *value, int line);
+extern void value_demote(value_t *value, int line);
+extern int y_can_evaluate(value_t *value);
+
+#define OPCODE_NOTFOUND 0x0100
+extern uint16_t opcode_lookup(opdata_t *op, int line, int fatal);
 
 #endif /* _COMPILER_H_ */

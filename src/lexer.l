@@ -135,6 +135,27 @@ x                              { return(XREG); }
 y                              { return(YREG); }
 a                              { return(AREG); }
 
+&&                             { yylval.arithop = AND; return(AND); }
+\|\|                           { yylval.arithop = OR; return(OR); }
+
+&                              { yylval.arithop = BAND; return(BAND); }
+\|                             { yylval.arithop = BOR; return(BOR); }
+'^'                            { yylval.arithop = BXOR; return(BXOR); }
+~                              { yylval.arithop = BNOT; return(BNOT); }
+\<<                            { yylval.arithop = BSL; return(BSL); }
+>>                             { yylval.arithop = BSR; return(BSR); }
+
+\<                             { yylval.arithop = LT; return(LT); }
+>                              { yylval.arithop = GT; return(GT); }
+
+\+                             { yylval.arithop = PLUS; return(PLUS); }
+\-                             { yylval.arithop = MINUS; return(MINUS); }
+\*                             { yylval.arithop = MUL; return(MUL); }
+\/                             { yylval.arithop = DIV; return(DIV); }
+%                              { yylval.arithop = MOD; return(MOD); }
+
+
+
 equ                            { return(EQ); }
 (org|\.org)                    { return(ORG); }
 

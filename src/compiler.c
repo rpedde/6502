@@ -33,13 +33,14 @@ uint16_t min_split_gap = MIN_SPLIT_GAP;
 uint8_t skip_data_byte = 0xea;
 uint8_t hex_bytes_per_line = HEX_BYTES_PER_LINE;
 
+symtable_t symtable = { NULL, NULL, NULL };
+int parser_line = 1;
+
 extern FILE *yyin;
 extern int yyparse(void*);
 
 int parse_failure = 0;
 uint16_t compiler_offset = 0x8000;
-
-#define OPCODE_NOTFOUND 0x0100
 
 typedef struct opdata_list_t_struct {
     struct opdata_list_t_struct *next;
@@ -152,31 +153,22 @@ uint16_t opcode_lookup(opdata_t *op, int line, int fatal) {
  */
 void pass2(void) {
     opdata_list_t *pcurrent = list.next;
-    value_t *psym;
     value_t *operand = NULL;
+    uint16_t eaddr, taddr;
+    int offset;
 
-    DPRINTF(DBG_INFO, "Pass 2: Symbol resolution/addressing mode determination\n");
-
-    /* FIXME: Fix data here, minus address fixups */
+    DPRINTF(DBG_INFO, "Pass 2: Symbol resolution\n");
 
     while(pcurrent) {
         if (pcurrent->data->type == TYPE_INSTRUCTION) {
-            if(pcurrent->data->value)
+            if(pcurrent->data->value) {
                 operand = y_evaluate_val(pcurrent->data->value, pcurrent->data->line, pcurrent->data->offset);
+                pcurrent->data->value = operand;
+            }
 
             switch(pcurrent->data->addressing_mode) {
             case CPU_ADDR_MODE_IMPLICIT:
             case CPU_ADDR_MODE_ACCUMULATOR:
-                /* Some assemblers seem to allow Accumulator type indexing modes to be
-                 * specified as implicit.  Try swapping them if the specified mode is
-                 * invalid.
-                 */
-                if(opcode_lookup(pcurrent->data, pcurrent->data->line, 0) == OPCODE_NOTFOUND) {
-                    if(pcurrent->data->addressing_mode == CPU_ADDR_MODE_IMPLICIT)
-                        pcurrent->data->addressing_mode = CPU_ADDR_MODE_ACCUMULATOR;
-                    else
-                        pcurrent->data->addressing_mode = CPU_ADDR_MODE_IMPLICIT;
-                }
                 break;
             case CPU_ADDR_MODE_IMMEDIATE:
             case CPU_ADDR_MODE_ZPAGE:
@@ -184,192 +176,56 @@ void pass2(void) {
             case CPU_ADDR_MODE_ZPAGE_Y:
             case CPU_ADDR_MODE_IND_X:
             case CPU_ADDR_MODE_IND_Y:
-                /* these must be bytes, but we'll verify in the fixups */
-                /* verify byte-size operand */
-                /* if(operand->type == Y_TYPE_WORD) { */
-                /*     DPRINTF(DBG_ERROR, "Line %d: Error:  Addressing mode requires BYTE, operand is WORD\n", */
-                /*             pcurrent->data->line); */
-                /*     exit(EXIT_FAILURE); */
-                /* } */
+                if(!y_value_is_byte(operand)) {
+                    DPRINTF(DBG_ERROR, "Line %d: Addressing mode requires "
+                            "BYTE, operand is WORD\n", pcurrent->data->line);
+                    exit(EXIT_FAILURE);
+                }
+                value_demote(operand, pcurrent->data->line);
                 break;
 
             case CPU_ADDR_MODE_RELATIVE:
-                /* this can either be a direct BYTE value, or an address -- we'll verify symbols,
-                 * but do bounds checking in fixups pass */
+                eaddr = pcurrent->data->offset + 2;
+                value_promote(operand, pcurrent->data->line);
+
+                /* I don't think it's valid to put a BYTE value
+                 * directly in a relative branch, so we won't
+                 * address that point
+                 */
+
+                taddr = operand->word;
+                offset = taddr - eaddr;
+
+                if(offset < -128 || offset > 127) {
+                    DPRINTF(DBG_ERROR, "Line %d ($%04x): Branch out of range ($%04x)\n",
+                            pcurrent->data->line,
+                            pcurrent->data->offset,
+                            operand->word);
+                    exit(EXIT_FAILURE);
+                }
+
+                operand->type = Y_TYPE_BYTE;
+                if(offset < 0) {
+                    operand->byte = abs(offset) ^ 0xFF;
+                    operand->byte += 1;
+                } else {
+                    operand->byte = offset;
+                }
+                DPRINTF(DBG_DEBUG, " - Line %d: Fixed up branch to $%02x\n",
+                        pcurrent->data->line,
+                        (uint16_t)operand->byte);
                 break;
 
             case CPU_ADDR_MODE_ABSOLUTE:
             case CPU_ADDR_MODE_ABSOLUTE_X:
             case CPU_ADDR_MODE_ABSOLUTE_Y:
             case CPU_ADDR_MODE_INDIRECT:
-                /* verify word-size operand */
-                if(operand->type == Y_TYPE_BYTE) {
-                    DPRINTF(DBG_ERROR, "Line %d: Error:  Addressing mode requires WORD, operand is BYTE\n",
-                            pcurrent->data->line);
-                    exit(EXIT_FAILURE);
-                }
+                value_promote(operand, pcurrent->data->line);
                 break;
 
-            case CPU_ADDR_MODE_UNKNOWN:
-            case CPU_ADDR_MODE_UNKNOWN_X:
-            case CPU_ADDR_MODE_UNKNOWN_Y:
-                /* these are either ZPAGE (if byte), or ABSOLUTE (if word) */
-                /* we'll massage the operand type if:
-                 *
-                 * - it's a byte, but there exists no ZPAGE instruction
-                 * We might do this at some later point, too...
-                 * - it's a word, there exists a ZPAGE indexing mode, and value < 265
-                 */
-                if(operand->type == Y_TYPE_BYTE) {
-                    pcurrent->data->addressing_mode = CPU_ADDR_MODE_ZPAGE +
-                        (pcurrent->data->addressing_mode - CPU_ADDR_MODE_UNKNOWN);
-
-                    if(opcode_lookup(pcurrent->data, pcurrent->data->line, 0) == OPCODE_NOTFOUND) {
-                        /* *must* be an absolute that should be promoted */
-                        DPRINTF(DBG_WARN,"Line %d: Warning: Extending presumed ZPAGE operand to ABSOLUTE\n",
-                                pcurrent->data->line);
-                        operand->type = Y_TYPE_WORD;
-                        operand->word = operand->byte;
-                        pcurrent->data->promote = 1;
-                    }
-                    pcurrent->data->addressing_mode = CPU_ADDR_MODE_UNKNOWN +
-                        (pcurrent->data->addressing_mode - CPU_ADDR_MODE_ZPAGE);
-
-                }
-
-                if(operand->type == Y_TYPE_WORD) {
-                    pcurrent->data->addressing_mode = CPU_ADDR_MODE_ABSOLUTE +
-                        (pcurrent->data->addressing_mode - CPU_ADDR_MODE_UNKNOWN);
-                    pcurrent->data->len = 3;
-                } else {
-                    pcurrent->data->addressing_mode = CPU_ADDR_MODE_ZPAGE +
-                        (pcurrent->data->addressing_mode - CPU_ADDR_MODE_UNKNOWN);
-                    pcurrent->data->len = 2;
-                }
-                break;
             default:
                 DPRINTF(DBG_ERROR, "Line %d: Error:  Unknown addressing mode\n",
                         pcurrent->data->line);
-            }
-
-            pcurrent->data->offset = compiler_offset;
-            compiler_offset += pcurrent->data->len;
-        } else if (pcurrent->data->type == TYPE_LABEL) {
-            psym = y_lookup_symbol(pcurrent->data->value->label);
-            if(!psym) {
-                DPRINTF(DBG_ERROR, "Line %d: Internal Error:  Cannot find symbol '%s'\n",
-                        pcurrent->data->line,
-                        pcurrent->data->value->label);
-                exit(EXIT_FAILURE);
-            }
-
-            if(psym->type != Y_TYPE_WORD) {
-                DPRINTF(DBG_ERROR, "Line: %d: Internal Error:  Expected symbol '%s' to be a WORD\n",
-                        pcurrent->data->line,
-                        pcurrent->data->value->label);
-                exit(EXIT_FAILURE);
-            }
-
-            DPRINTF(DBG_DEBUG, " - Updating symbol '%s' to %04x\n",
-                    pcurrent->data->value->label,
-                    compiler_offset);
-
-            psym->word = compiler_offset;
-        } else if (pcurrent->data->type == TYPE_OFFSET) {
-            compiler_offset = pcurrent->data->value->word;
-        } else if (pcurrent->data->type == TYPE_DATA) {
-            pcurrent->data->offset = compiler_offset;
-            compiler_offset += pcurrent->data->len;
-        } else {
-            DPRINTF(DBG_ERROR, "Line %d: Error: Unknown instruction type\n",
-                    pcurrent->data->line);
-        }
-
-        pcurrent = pcurrent->next;
-    }
-}
-
-void pass3(void) {
-    opdata_list_t *pcurrent = list.next;
-    uint16_t effective_addr;
-    uint16_t target_addr;
-    int offset;
-    value_t *operand = NULL;
-
-    DPRINTF(DBG_INFO, "Pass 3:  Finalizing opcode/operand data.\n");
-    while(pcurrent) {
-        if(pcurrent->data->type == TYPE_INSTRUCTION) {
-            /* we really shouldn't be evaluating this twice, sanity
-             * checks should be here, and pass 2 should be strictly
-             * addressing and label fixups */
-
-            if(pcurrent->data->value) {
-                operand = y_evaluate_val(pcurrent->data->value, pcurrent->data->line, pcurrent->data->offset);
-                if(pcurrent->data->promote) {
-                    operand->type = Y_TYPE_WORD;
-                    operand->word = operand->byte;
-                }
-            }
-
-            pcurrent->data->opcode = (uint8_t)opcode_lookup(pcurrent->data, pcurrent->data->line, 1);
-
-
-            switch(pcurrent->data->addressing_mode) {
-            case CPU_ADDR_MODE_IMMEDIATE:
-            case CPU_ADDR_MODE_ZPAGE:
-            case CPU_ADDR_MODE_ZPAGE_X:
-            case CPU_ADDR_MODE_ZPAGE_Y:
-            case CPU_ADDR_MODE_IND_X:
-            case CPU_ADDR_MODE_IND_Y:
-                /* these are byte.. if the data is word, see if we can
-                   safely demote it */
-                if(operand->type == Y_TYPE_WORD)  {
-                    if (operand->word > 255) {
-                        DPRINTF(DBG_ERROR,
-                                "Line %d: Error: Cannot coerce value to BYTE\n",
-                                pcurrent->data->line);
-                        exit(EXIT_FAILURE);
-                    } else {
-                        operand->type = Y_TYPE_BYTE;
-                        operand->byte = (operand->word & 0xff);
-                    }
-                }
-                pcurrent->data->value = operand;
-                break;
-
-            case CPU_ADDR_MODE_RELATIVE:
-                if(pcurrent->data->addressing_mode == CPU_ADDR_MODE_RELATIVE) {
-                    effective_addr = pcurrent->data->offset + 2;
-
-                    if(operand->type == Y_TYPE_WORD) {
-                        target_addr = operand->word;
-                        pcurrent->data->value->type = Y_TYPE_BYTE;
-
-                        offset = target_addr - effective_addr;
-                        if(offset < -128 || offset > 127) {
-                            DPRINTF(DBG_ERROR, "Line %d: Error:  Branch out of range\n",
-                                    pcurrent->data->line);
-                            exit(EXIT_FAILURE);
-                        }
-
-                        if(offset < 0) {
-                            pcurrent->data->value->byte = abs(offset) ^ 0xFF;
-                            pcurrent->data->value->byte += 1;
-                        } else {
-                            pcurrent->data->value->byte = offset;
-                        }
-                        DPRINTF(DBG_DEBUG, " - Line %d: Fixed up branch to $%02x\n",
-                                pcurrent->data->line,
-                                (uint16_t)pcurrent->data->value->byte);
-                    } else {
-                        pcurrent->data->type = Y_TYPE_BYTE;
-                        pcurrent->data->value->byte = operand->byte;
-                    }
-                }
-                break;
-            default:
-                /* finalize the rest */
-                pcurrent->data->value = operand;
             }
         }
         pcurrent = pcurrent->next;
@@ -429,8 +285,8 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
                 else if (psym->value->type == Y_TYPE_WORD)
                     fprintf(map, "$%04x", psym->value->word);
                 else {
-                    DPRINTF(DBG_ERROR, "Bad Y-type\n");
-                    exit(EXIT_FAILURE);
+                    DPRINTF(DBG_ERROR, "Unexpressed symbol table entry: %s\n", psym->label);
+                    fprintf(map, "???");
                 }
                 fprintf(map,"\n");
             }
@@ -527,11 +383,11 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
                 }
                 fprintf(map, "\n");
                 break;
-            case TYPE_OFFSET:
-                fprintf(map, "\n");
-                break;
-            case TYPE_LABEL:
-                break;
+            /* case TYPE_OFFSET: */
+            /*     fprintf(map, "\n"); */
+            /*     break; */
+            /* case TYPE_LABEL: */
+            /*     break; */
             default:
                 DPRINTF(DBG_ERROR, "unhandled optype while printing map\n");
                 exit (EXIT_FAILURE);
@@ -548,11 +404,11 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
         current_offset = pcurrent->data->offset;
 
         /* fast forward to the real start */
-        while(pcurrent && (pcurrent->data->type == TYPE_OFFSET)) {
-            DPRINTF(DBG_DEBUG, "Found offset instruction for $%04x\n", pcurrent->data->value->word);
-            current_offset = pcurrent->data->value->word;
-            pcurrent = pcurrent->next;
-        }
+        /* while(pcurrent && (pcurrent->data->type == TYPE_OFFSET)) { */
+        /*     DPRINTF(DBG_DEBUG, "Found offset instruction for $%04x\n", pcurrent->data->value->word); */
+        /*     current_offset = pcurrent->data->value->word; */
+        /*     pcurrent = pcurrent->next; */
+        /* } */
 
 
         /* map done, write bin and hex, if we want them */
@@ -643,46 +499,46 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
                 current_offset += pcurrent->data->len;
                 break;
 
-            case TYPE_LABEL:
-                break;
+            /* case TYPE_LABEL: */
+            /*     break; */
 
-            case TYPE_OFFSET:
-                /* we would open a new binfile here, if we were splitting */
-                if (pcurrent->data->value->word != current_offset) {
-                    /* we have a gap.  we fill if we're not doing splits, or if the
-                     * split is less than the min_split_gap */
-                    if(write_bin) {
-                        if (((pcurrent->data->value->word - current_offset) < min_split_gap) || (!split_bin)) {
-                            DPRINTF(DBG_DEBUG, "Filling %d byte gap to $%04x\n",
-                                    pcurrent->data->value->word - current_offset, pcurrent->data->value->word);
+            /* case TYPE_OFFSET: */
+            /*     /\* we would open a new binfile here, if we were splitting *\/ */
+            /*     if (pcurrent->data->value->word != current_offset) { */
+            /*         /\* we have a gap.  we fill if we're not doing splits, or if the */
+            /*          * split is less than the min_split_gap *\/ */
+            /*         if(write_bin) { */
+            /*             if (((pcurrent->data->value->word - current_offset) < min_split_gap) || (!split_bin)) { */
+            /*                 DPRINTF(DBG_DEBUG, "Filling %d byte gap to $%04x\n", */
+            /*                         pcurrent->data->value->word - current_offset, pcurrent->data->value->word); */
 
-                            while(current_offset < pcurrent->data->value->word) {
-                                fprintf(bin, "%c", skip_data_byte);
-                                current_offset++;
-                            }
-                        } else { /* split bins with excessive gap */
-                            char *tmp_filename = NULL;
+            /*                 while(current_offset < pcurrent->data->value->word) { */
+            /*                     fprintf(bin, "%c", skip_data_byte); */
+            /*                     current_offset++; */
+            /*                 } */
+            /*             } else { /\* split bins with excessive gap *\/ */
+            /*                 char *tmp_filename = NULL; */
 
-                            fclose(bin);
+            /*                 fclose(bin); */
 
-                            asprintf(&tmp_filename, "%04X.bin", pcurrent->data->value->word);
-                            if(!tmp_filename) {
-                                perror("malloc");
-                                exit(EXIT_FAILURE);
-                            }
-                            bin = make_fh(basename, tmp_filename, 1);
-                            free(tmp_filename);
-                        }
-                    }
+            /*                 asprintf(&tmp_filename, "%04X.bin", pcurrent->data->value->word); */
+            /*                 if(!tmp_filename) { */
+            /*                     perror("malloc"); */
+            /*                     exit(EXIT_FAILURE); */
+            /*                 } */
+            /*                 bin = make_fh(basename, tmp_filename, 1); */
+            /*                 free(tmp_filename); */
+            /*             } */
+            /*         } */
 
-                    /* hex doesn't need to gap fill... we'll just start a new line */
-                    if(write_hex) {
-                        hexline_flush(hex, &hexline);
-                        memset(&hexline, 0, sizeof(hex_line_t));
-                    }
-                }
-                current_offset = pcurrent->data->value->word;
-                break;
+            /*         /\* hex doesn't need to gap fill... we'll just start a new line *\/ */
+            /*         if(write_hex) { */
+            /*             hexline_flush(hex, &hexline); */
+            /*             memset(&hexline, 0, sizeof(hex_line_t)); */
+            /*         } */
+            /*     } */
+            /*     current_offset = pcurrent->data->value->word; */
+            /*     break; */
 
             default:
                 fprintf(stderr, "unhandled data type: %d", pcurrent->data->type);
@@ -779,8 +635,8 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    compiler_offset = 0x8000;
     pass2();
-    pass3();
 
     /* default: map and split bin */
     write_output(basepath, do_map, do_bin, do_hex, do_split);

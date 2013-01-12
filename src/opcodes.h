@@ -97,9 +97,9 @@
 #define CPU_ADDR_MODE_ABSOLUTE    0x07
 #define CPU_ADDR_MODE_ABSOLUTE_X  0x08
 #define CPU_ADDR_MODE_ABSOLUTE_Y  0x09
-#define CPU_ADDR_MODE_INDIRECT    0x0a
-#define CPU_ADDR_MODE_IND_X       0x0b
-#define CPU_ADDR_MODE_IND_Y       0x0c
+#define CPU_ADDR_MODE_INDIRECT    0x0A
+#define CPU_ADDR_MODE_IND_X       0x0B
+#define CPU_ADDR_MODE_IND_Y       0x0C
 
 typedef struct opcode_t_struct {
     uint8_t opcode_family;
