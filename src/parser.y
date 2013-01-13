@@ -22,6 +22,7 @@
 
 #include "config.h"
 
+#include <assert.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -55,6 +56,7 @@ value_t *y_create_arith(value_t *left, value_t *right, int operator);
 value_t *y_evaluate_val(value_t *value, int line, uint16_t addr);
 void *error_malloc(ssize_t size);
 void y_value_free(value_t *value);
+void y_dump_value(value_t *value);
 
 %}
 
@@ -86,6 +88,8 @@ void y_value_free(value_t *value);
 %token <arithop> BNOT
 %token <arithop> BSL
 %token <arithop> BSR
+%token <arithop> LOWB
+%token <arithop> HIB
 
 %token <arithop> LT
 %token <arithop> GT
@@ -119,7 +123,7 @@ void y_value_free(value_t *value);
 %left PLUS MINUS
 %left MUL DIV MOD
 
-%left BNOT
+%left BNOT LOWB HIB
 
 %nonassoc binary_op
 %nonassoc bool_op
@@ -141,9 +145,9 @@ line: OP EOL { y_add_opdata($1, CPU_ADDR_MODE_IMPLICIT, NULL); parser_line++; }
 | OP expression EOL { y_add_opdata($1, CPU_ADDR_MODE_UNKNOWN, $2); parser_line++; } // OR REL!
 | OP expression ',' XREG EOL { y_add_opdata($1, CPU_ADDR_MODE_UNKNOWN_X, $2); parser_line++; } // should be word, optimize at compile
 | OP expression ',' YREG EOL { y_add_opdata($1, CPU_ADDR_MODE_UNKNOWN_Y, $2); parser_line++; } // should be word, optimize at compile
-| OP '[' expression ']' EOL { y_add_opdata($1, CPU_ADDR_MODE_INDIRECT, $3); parser_line++; } // Must be WORD
-| OP '[' expression ',' XREG ']' EOL { y_add_opdata($1, CPU_ADDR_MODE_IND_X, $3); parser_line++; } // Must be BYTE
-| OP '[' expression ']' ',' YREG EOL { y_add_opdata($1, CPU_ADDR_MODE_IND_Y, $3); parser_line++; } // Must be BYTE
+| OP '(' expression ')' EOL { y_add_opdata($1, CPU_ADDR_MODE_INDIRECT, $3); parser_line++; } // Must be WORD
+| OP '(' expression ',' XREG ')' EOL { y_add_opdata($1, CPU_ADDR_MODE_IND_X, $3); parser_line++; } // Must be BYTE
+| OP '(' expression ')' ',' YREG EOL { y_add_opdata($1, CPU_ADDR_MODE_IND_Y, $3); parser_line++; } // Must be BYTE
 | LABEL EQ expression EOL { y_add_symtable($1, $3); parser_line++; }
 | LABEL '=' expression EOL { y_add_symtable($1, $3); parser_line++; }
 | LABEL { y_add_wordsym($1, compiler_offset); } /* an address label */
@@ -163,7 +167,7 @@ expression: WORD { $$ = y_new_nval(Y_TYPE_WORD, $1, NULL); }
 | expression math_operator expression %prec math_op { $$ = y_create_arith($1, $3, $2); }
 | expression bool_operator expression %prec bool_op { $$ = y_create_arith($1, $3, $2); }
 | expression binary_operator expression %prec binary_op { $$ = y_create_arith($1, $3, $2); }
-| '(' expression ')' { $$ = $2; }
+| '[' expression ']' { $$ = $2; }
 ;
 
 math_operator: PLUS { $$ = $1; }
@@ -185,6 +189,8 @@ binary_operator: BXOR { $$ = $1; }
 ;
 
 unary_operator: BNOT { $$ = $1; }
+| LOWB { $$ = $1; }
+| HIB { $$ = $1; }
 ;
 
 
@@ -200,6 +206,7 @@ bytelvalue: BYTE { $$ = y_new_nval(Y_TYPE_BYTE, $1, NULL); }
 bytestring: bytelvalue { y_add_nval($1); }
 | STRING { y_add_string($1); }
 | bytestring ',' bytelvalue { y_add_nval($3); }
+| bytestring ',' STRING { y_add_string($3); }
 ;
 
 wordstring: wordlvalue { y_add_nval($1); }
@@ -261,6 +268,44 @@ void *error_malloc(ssize_t size) {
 }
 
 /**
+ * dump a value
+ *
+ * @param value item to dump
+ */
+void y_do_dump_value(value_t *value, int depth) {
+    if(!value) {
+        DPRINTF(DBG_DEBUG, "%*c NULL\n", depth*2, ' ');
+        return;
+    }
+
+    switch(value->type) {
+    case Y_TYPE_WORD:
+        DPRINTF(DBG_DEBUG, "%*c $%04x\n", depth*2, ' ', value->word);
+        break;
+    case Y_TYPE_BYTE:
+        DPRINTF(DBG_DEBUG, "%*c $%02x\n", depth*2, ' ', value->byte);
+        break;
+    case Y_TYPE_LABEL:
+        DPRINTF(DBG_DEBUG, "%*c $%s\n", depth*2, ' ', value->label);
+        break;
+    case Y_TYPE_ARITH:
+        DPRINTF(DBG_DEBUG, "%*c Arith op $%04x\n", depth*2, ' ', value->word);
+        DPRINTF(DBG_DEBUG, "%*c L:\n", depth*2, ' ');
+        y_do_dump_value(value->left, depth + 1);
+        DPRINTF(DBG_DEBUG, "%*c R:\n", depth*2, ' ');
+        y_do_dump_value(value->right, depth + 1);
+        break;
+    }
+}
+
+
+void y_dump_value(value_t *value) {
+    y_do_dump_value(value, 0);
+}
+
+
+
+/**
  * given a value (arithmetic or otherwise),
  * see if we can *right now* calculate a value for it.
  * (i.e. all labels are resolved).  This is useful to see
@@ -271,6 +316,16 @@ void *error_malloc(ssize_t size) {
  */
 int y_can_evaluate(value_t *value) {
     value_t *psym;
+
+    if(!value)
+        *((char*)(NULL)) = 0;
+
+    assert(value);
+
+    if(!value) {
+        DPRINTF(DBG_FATAL, "Internal error\n");
+        exit(EXIT_FAILURE);
+    }
 
     if ((value->type == Y_TYPE_WORD) || (value->type == Y_TYPE_BYTE))
         return 1;
@@ -285,7 +340,7 @@ int y_can_evaluate(value_t *value) {
     if (value->type == Y_TYPE_ARITH) {
         if(y_can_evaluate(value->left)) {
             /* unary operators have no right branch */
-            if((value->right) && (y_can_evaluate(value->right))) {
+            if((!value->right) || ((value->right) && (y_can_evaluate(value->right)))) {
                 return 1;
             }
         }
@@ -384,6 +439,9 @@ void value_demote(value_t *value, int line) {
 }
 
 void y_value_free(value_t *value) {
+    if(!value)
+        return;
+
     switch(value->type) {
     case Y_TYPE_LABEL:
         if(value->label)
@@ -423,7 +481,7 @@ void y_value_free(value_t *value) {
  */
 value_t *y_evaluate_val(value_t *value, int line, uint16_t addr) {
     value_t *retval;
-    value_t *left, *right;
+    value_t *left = NULL, *right = NULL;
     uint16_t left_val, right_val;
     uint16_t retval_val;
 
@@ -500,7 +558,15 @@ value_t *y_evaluate_val(value_t *value, int line, uint16_t addr) {
             break;
 
         case BNOT:
-            retval_val = left_val ^ right_val;
+            retval_val = ~left_val;
+            break;
+
+        case HIB:
+            retval_val = (left_val & 0xFF00) >> 8;
+            break;
+
+        case LOWB:
+            retval_val = (left_val & 0x00FF);
             break;
 
         case BSL:
@@ -804,8 +870,9 @@ void y_add_opdata(uint8_t opcode_family, uint8_t addressing_mode,
      * label is not yet known, but will be zp.
      */
 
-    DPRINTF(DBG_DEBUG, "line %d ($%04x): adding opdata\n",
-            parser_line, compiler_offset);
+    DPRINTF(DBG_DEBUG, "line %d ($%04x): adding opdata (%s)\n",
+            parser_line, compiler_offset,
+            cpu_opcode_mnemonics[opcode_family]);
 
 
     memset(pnew,0,sizeof(opdata_t));
@@ -815,7 +882,8 @@ void y_add_opdata(uint8_t opcode_family, uint8_t addressing_mode,
 
     pnew->offset = compiler_offset;
 
-    if(y_can_evaluate(pvalue)) {
+
+    if((pvalue) && (y_can_evaluate(pvalue))) {
         /* let's do that! */
         pnew->value = y_evaluate_val(pvalue, parser_line, compiler_offset);
         y_value_free(pvalue);
@@ -823,6 +891,10 @@ void y_add_opdata(uint8_t opcode_family, uint8_t addressing_mode,
         /* :( */
         pnew->value = pvalue;
     }
+
+    DPRINTF(DBG_DEBUG, "line %d ($%04x): operand value:\n",
+            parser_line, compiler_offset);
+    y_dump_value(pnew->value);
 
     switch(addressing_mode) {
     case CPU_ADDR_MODE_IMPLICIT:
@@ -915,22 +987,24 @@ void y_add_opdata(uint8_t opcode_family, uint8_t addressing_mode,
             cpu_addressing_mode[pnew->addressing_mode],
             pnew->opcode);
 
-    switch(pnew->value->type) {
-    case Y_TYPE_BYTE:
-        DPRINTF(DBG_DEBUG, "operand BYTE: $%02x\n",
-                pnew->value->byte);
-        break;
-    case Y_TYPE_WORD:
-        DPRINTF(DBG_DEBUG, "operand WORD: $%04x\n",
-                pnew->value->word);
-        break;
-    case Y_TYPE_LABEL:
-        DPRINTF(DBG_DEBUG, "unresolved label %s\n",
-                pnew->value->label);
-        break;
-    case Y_TYPE_ARITH:
-        DPRINTF(DBG_DEBUG, "unresolvable arithmetic\n");
-        break;
+    if(pnew->value) {
+        switch(pnew->value->type) {
+        case Y_TYPE_BYTE:
+            DPRINTF(DBG_DEBUG, "operand BYTE: $%02x\n",
+                    pnew->value->byte);
+            break;
+        case Y_TYPE_WORD:
+            DPRINTF(DBG_DEBUG, "operand WORD: $%04x\n",
+                    pnew->value->word);
+            break;
+        case Y_TYPE_LABEL:
+            DPRINTF(DBG_DEBUG, "unresolved label %s\n",
+                    pnew->value->label);
+            break;
+        case Y_TYPE_ARITH:
+            DPRINTF(DBG_DEBUG, "unresolvable arithmetic\n");
+            break;
+        }
     }
 
     pnew->line = parser_line;

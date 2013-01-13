@@ -122,9 +122,9 @@ uint16_t opcode_lookup(opdata_t *op, int line, int fatal) {
     opcode_t *ptable = (opcode_t*)&cpu_opcode_map;
     int index = 0;
 
-    DPRINTF(DBG_DEBUG, " - Looking up opcode '%s' (%s)\n",
-            cpu_opcode_mnemonics[op->opcode_family],
-            cpu_addressing_mode[op->addressing_mode]);
+    /* DPRINTF(DBG_DEBUG, " - Looking up opcode '%s' (%s)\n", */
+    /*         cpu_opcode_mnemonics[op->opcode_family], */
+    /*         cpu_addressing_mode[op->addressing_mode]); */
 
     while(index < 256 && (op->opcode_family != ptable->opcode_family ||
                           op->addressing_mode != ptable->addressing_mode)) {
@@ -161,8 +161,16 @@ void pass2(void) {
 
     while(pcurrent) {
         if (pcurrent->data->type == TYPE_INSTRUCTION) {
+            DPRINTF(DBG_DEBUG, "Line %d ($%04x)\n", pcurrent->data->line,
+                    pcurrent->data->offset);
+
             if(pcurrent->data->value) {
                 operand = y_evaluate_val(pcurrent->data->value, pcurrent->data->line, pcurrent->data->offset);
+                if(!operand) {
+                    DPRINTF(DBG_FATAL, "Line %d ($%04x): unresolvable symbol \n", pcurrent->data->line,
+                            pcurrent->data->offset);
+                    exit(EXIT_FAILURE);
+                }
                 pcurrent->data->value = operand;
             }
 
@@ -182,6 +190,7 @@ void pass2(void) {
                     exit(EXIT_FAILURE);
                 }
                 value_demote(operand, pcurrent->data->line);
+
                 break;
 
             case CPU_ADDR_MODE_RELATIVE:

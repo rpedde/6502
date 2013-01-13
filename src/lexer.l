@@ -145,8 +145,8 @@ a                              { return(AREG); }
 \<<                            { yylval.arithop = BSL; return(BSL); }
 >>                             { yylval.arithop = BSR; return(BSR); }
 
-\<                             { yylval.arithop = LT; return(LT); }
->                              { yylval.arithop = GT; return(GT); }
+\<                             { yylval.arithop = LOWB; return(LOWB); }
+>                              { yylval.arithop = HIB; return(HIB); }
 
 \+                             { yylval.arithop = PLUS; return(PLUS); }
 \-                             { yylval.arithop = MINUS; return(MINUS); }
