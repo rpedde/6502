@@ -60,6 +60,8 @@ extern void set_offset(uint16_t offset) {
     compiler_offset = offset;
 }
 
+extern uint16_t last_line_offset;
+
 void hexline_flush(FILE *fh, hex_line_t *hexline) {
     uint8_t checksum = 0;
     uint8_t byte;
@@ -160,6 +162,17 @@ void pass2(void) {
     DPRINTF(DBG_INFO, "Pass 2: Symbol resolution\n");
 
     while(pcurrent) {
+        if (pcurrent->data->type == TYPE_DATA) {
+            /* force expression of values */
+            operand = y_evaluate_val(pcurrent->data->value, pcurrent->data->line, pcurrent->data->offset);
+            if(!operand) {
+                DPRINTF(DBG_FATAL, "Line %d ($%04x): unresolvable symbol \n", pcurrent->data->line,
+                        pcurrent->data->offset);
+                exit(EXIT_FAILURE);
+            }
+            pcurrent->data->value = operand;
+        }
+
         if (pcurrent->data->type == TYPE_INSTRUCTION) {
             DPRINTF(DBG_DEBUG, "Line %d ($%04x)\n", pcurrent->data->line,
                     pcurrent->data->offset);
@@ -275,6 +288,7 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
     int len;
     symtable_t *psym;
     uint16_t current_offset;
+    uint16_t last_offset;
     value_t *pvalue;
     hex_line_t hexline;
 
@@ -392,11 +406,6 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
                 }
                 fprintf(map, "\n");
                 break;
-            /* case TYPE_OFFSET: */
-            /*     fprintf(map, "\n"); */
-            /*     break; */
-            /* case TYPE_LABEL: */
-            /*     break; */
             default:
                 DPRINTF(DBG_ERROR, "unhandled optype while printing map\n");
                 exit (EXIT_FAILURE);
@@ -411,14 +420,6 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
 
         pcurrent = list.next;
         current_offset = pcurrent->data->offset;
-
-        /* fast forward to the real start */
-        /* while(pcurrent && (pcurrent->data->type == TYPE_OFFSET)) { */
-        /*     DPRINTF(DBG_DEBUG, "Found offset instruction for $%04x\n", pcurrent->data->value->word); */
-        /*     current_offset = pcurrent->data->value->word; */
-        /*     pcurrent = pcurrent->next; */
-        /* } */
-
 
         /* map done, write bin and hex, if we want them */
         if(write_bin) {
@@ -439,10 +440,47 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
         if(write_hex)
             hex = make_fh(basename, "hex", 0);
 
-
         DPRINTF(DBG_INFO, "Fast-forwarded offset to $%04x\n", current_offset);
 
         while(pcurrent) {
+            /* decide if we need to split */
+            last_offset = current_offset; /* this is actually the calculated offset */
+            current_offset = pcurrent->data->offset;
+
+            if (current_offset != last_offset) {
+                /* we have a gap.  we fill if we're not doing splits, or if the
+                 * split is less than the min_split_gap */
+                if(write_bin) {
+                    if (((current_offset - last_offset) < min_split_gap) || (!split_bin)) {
+                        DPRINTF(DBG_DEBUG, "Filling %d byte gap to $%04x\n",
+                                current_offset - last_offset, current_offset);
+
+                        while(last_offset < current_offset) {
+                            fprintf(bin, "%c", skip_data_byte);
+                            last_offset++;
+                        }
+                    } else { /* split bins with excessive gap */
+                        char *tmp_filename = NULL;
+
+                        fclose(bin);
+
+                        asprintf(&tmp_filename, "%04X.bin", current_offset);
+                        if(!tmp_filename) {
+                            perror("malloc");
+                            exit(EXIT_FAILURE);
+                        }
+                        bin = make_fh(basename, tmp_filename, 1);
+                        free(tmp_filename);
+                    }
+                }
+
+                /* hex doesn't need to gap fill... we'll just start a new line */
+                if(write_hex) {
+                    hexline_flush(hex, &hexline);
+                    memset(&hexline, 0, sizeof(hex_line_t));
+                }
+            }
+
             switch (pcurrent->data->type) {
             case TYPE_INSTRUCTION:
                 if(write_bin) {
@@ -486,68 +524,12 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
                     }
                     break;
 
-                case Y_TYPE_LABEL:
-                    pvalue = y_evaluate_val(pcurrent->data->value,
-                                            pcurrent->data->line,
-                                            pcurrent->data->offset);
-                    if(write_bin)
-                        fprintf(bin, "%c%c",
-                                (pvalue->word & 0x00FF),
-                                (pvalue->word & 0xFF00) >> 8);
-
-                    if(write_hex) {
-                        add_hexline_byte(hex, &hexline, current_offset, pvalue->word & 0x00FF);
-                        add_hexline_byte(hex, &hexline, current_offset + 1, (pvalue->word >> 8) & 0x00FF);
-                    }
-                    break;
-
                 default:
                     DPRINTF(DBG_ERROR, "Bad TYPE_DATA writing bin file: %d\n", pcurrent->data->type);
                     exit(EXIT_FAILURE);
                 }
                 current_offset += pcurrent->data->len;
                 break;
-
-            /* case TYPE_LABEL: */
-            /*     break; */
-
-            /* case TYPE_OFFSET: */
-            /*     /\* we would open a new binfile here, if we were splitting *\/ */
-            /*     if (pcurrent->data->value->word != current_offset) { */
-            /*         /\* we have a gap.  we fill if we're not doing splits, or if the */
-            /*          * split is less than the min_split_gap *\/ */
-            /*         if(write_bin) { */
-            /*             if (((pcurrent->data->value->word - current_offset) < min_split_gap) || (!split_bin)) { */
-            /*                 DPRINTF(DBG_DEBUG, "Filling %d byte gap to $%04x\n", */
-            /*                         pcurrent->data->value->word - current_offset, pcurrent->data->value->word); */
-
-            /*                 while(current_offset < pcurrent->data->value->word) { */
-            /*                     fprintf(bin, "%c", skip_data_byte); */
-            /*                     current_offset++; */
-            /*                 } */
-            /*             } else { /\* split bins with excessive gap *\/ */
-            /*                 char *tmp_filename = NULL; */
-
-            /*                 fclose(bin); */
-
-            /*                 asprintf(&tmp_filename, "%04X.bin", pcurrent->data->value->word); */
-            /*                 if(!tmp_filename) { */
-            /*                     perror("malloc"); */
-            /*                     exit(EXIT_FAILURE); */
-            /*                 } */
-            /*                 bin = make_fh(basename, tmp_filename, 1); */
-            /*                 free(tmp_filename); */
-            /*             } */
-            /*         } */
-
-            /*         /\* hex doesn't need to gap fill... we'll just start a new line *\/ */
-            /*         if(write_hex) { */
-            /*             hexline_flush(hex, &hexline); */
-            /*             memset(&hexline, 0, sizeof(hex_line_t)); */
-            /*         } */
-            /*     } */
-            /*     current_offset = pcurrent->data->value->word; */
-            /*     break; */
 
             default:
                 fprintf(stderr, "unhandled data type: %d", pcurrent->data->type);
@@ -634,6 +616,9 @@ int main(int argc, char *argv[]) {
     /* add a dummy symtable entry */
     y_add_symtable("*", &star_symbol);
 
+    compiler_offset = 0x8000;
+    last_line_offset = compiler_offset;
+
     DPRINTF(DBG_INFO, "Pass 1:  Parsing.\n");
     yyin = fin;
     result = yyparse(NULL);
@@ -645,6 +630,7 @@ int main(int argc, char *argv[]) {
     }
 
     compiler_offset = 0x8000;
+
     pass2();
 
     /* default: map and split bin */

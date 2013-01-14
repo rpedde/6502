@@ -40,6 +40,8 @@
 extern void yyerror(char *msg);
 extern int yylex (void);
 
+uint16_t last_line_offset;
+
 value_t *y_new_nval(int type, uint16_t nval, char *lval);
 void y_add_opdata(uint8_t,  uint8_t, struct value_t_struct *);
 void y_add_label(char *);
@@ -201,10 +203,10 @@ program: line {}
 | program line {}
 ;
 
-line: EOL { parser_line++; }
-| LINE EOL { parser_line++; }
-| LABELLINE EOL { parser_line++; }
-| LABEL LABELLINE EOL { y_add_wordsym($1, compiler_offset); parser_line++; }
+line: EOL { parser_line++; last_line_offset = compiler_offset; }
+| LINE EOL { parser_line++; last_line_offset = compiler_offset; }
+| LABELLINE EOL { parser_line++; last_line_offset = compiler_offset; }
+| LABEL LABELLINE EOL { y_add_wordsym($1, last_line_offset); last_line_offset = compiler_offset; parser_line++; }
 ;
 
 /* line that cannot be labeled */
@@ -870,6 +872,7 @@ void y_add_byte(uint8_t byte) {
     pvalue->type = TYPE_DATA;
     pvalue->value = value;
     pvalue->len = 1;
+    pvalue->offset = compiler_offset;
 
     compiler_offset += 1;
     add_opdata(pvalue);
@@ -895,6 +898,7 @@ void y_add_word(uint16_t word) {
     pvalue->type = TYPE_DATA;
     pvalue->value = value;
     pvalue->len = 2;
+    pvalue->offset = compiler_offset;
 
     compiler_offset += 2;
     add_opdata(pvalue);
@@ -926,6 +930,7 @@ void y_add_nval(value_t *value) {
         exit(EXIT_FAILURE);
     }
 
+    pvalue->offset = compiler_offset;
     compiler_offset += pvalue->len;
     add_opdata(pvalue);
 }
