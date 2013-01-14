@@ -213,8 +213,8 @@ line: EOL { parser_line++; last_line_offset = compiler_offset; }
 LINE: MUL '=' expression { y_add_offset($3); }
 | ORG expression { y_add_offset($2); }
 | LABEL { y_add_wordsym($1, compiler_offset); }
-| LABEL EQ expression { y_add_symtable($1, $3); }
-| LABEL '=' expression { y_add_symtable($1, $3); }
+| LABEL EQ wordlvalue { y_add_symtable($1, $3); }
+| LABEL '=' wordlvalue { y_add_symtable($1, $3); }
 ;
 
 /* lines that can have an optional label */
@@ -367,7 +367,6 @@ unary_operator: BNOT { $$ = $1; }
 | LOWB { $$ = $1; }
 | HIB { $$ = $1; }
 ;
-
 
 wordlvalue: WORD { $$ = y_new_nval(Y_TYPE_WORD, $1, NULL); }
 | LABEL { $$ = y_new_nval(Y_TYPE_LABEL, 0, $1); }

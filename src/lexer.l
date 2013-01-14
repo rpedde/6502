@@ -31,7 +31,12 @@
 
 extern int yydebug;
 extern int parse_failure;
+extern int parser_line;
+
 unsigned int tempint;
+
+void l_include_file(char *filename);
+void l_include_error(void);
 
 uint16_t t161;
 uint8_t t81;
@@ -47,12 +52,26 @@ hex_word $[a-f0-9][a-f0-9][a-f0-9][a-f0-9]
 binary_literal %[0-1]{1,16}
 qstring \"[^\"\n]*[\"\n]
 
+
+%x incl
+
 %%
 
 [\t ]+
 \r
 ;.*\n                          { return(EOL); }
 \n                             { return(EOL); }
+
+
+(include|#include|.include)    BEGIN(incl);
+<incl>[\t ]+
+<incl>[^\t\n ]+                { l_include_file(yytext); }
+<incl>\n                       { l_include_error(); }
+<<EOF>>                        { yypop_buffer_state();
+                                 if(!YY_CURRENT_BUFFER)
+                                     yyterminate();
+                                 BEGIN(INITIAL);
+                               }
 
 adc                            { yylval.opcode = CPU_OPCODE_ADC; return(TADC); }
 and                            { yylval.opcode = CPU_OPCODE_AND; return(TAND); }
@@ -138,7 +157,6 @@ a                              { return(AREG); }
 
 equ                            { return(EQ); }
 (org|\.org)                    { return(ORG); }
-
 (\.db|db|\.byte)               { return(BYTELITERAL); }
 (\.dw|dw|\.word)               { return(WORDLITERAL); }
 
@@ -165,6 +183,44 @@ void yyerror(char *msg) {
     parse_failure = 1;
     DPRINTF(DBG_ERROR,"Parser error, line %d: %s\n",yylineno, msg);
 }
+
+/**
+ * include a file and switch back out of incl-mode
+ *
+ * @param filename file to include
+ */
+void l_include_file(char *filename) {
+    char *startptr = filename;
+    char *fname;
+
+    if(*startptr == '\"')
+        startptr++;
+
+    fname = strdup(startptr);
+    if(fname[strlen(fname) - 1] == '\"')
+        fname[strlen(fname) - 1] = 0;
+
+    DPRINTF(DBG_INFO, "Opening %s for inclusion\n", fname);
+
+    yyin = fopen(fname, "r" );
+
+    if ( ! yyin ) {
+        DPRINTF(DBG_FATAL, "Line %d: Cannot open file '%s' for include\n",
+                parser_line, fname);
+        exit(EXIT_FAILURE);
+    }
+
+    free(fname);
+    yypush_buffer_state(yy_create_buffer(yyin, YY_BUF_SIZE ));
+
+    BEGIN(INITIAL);
+}
+
+void l_include_error(void) {
+     DPRINTF(DBG_FATAL, "Missing filename for include\n");
+     exit(EXIT_FAILURE);
+}
+
 
 /* Local Variables:  */
 /* mode: fundamental */
