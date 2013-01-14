@@ -69,8 +69,72 @@ void y_dump_value(value_t *value);
     int arithop;
 };
 
-%token <opcode> OP
-%token <opcode> RELOP
+%token <opcode> TADC
+%token <opcode> TAND
+%token <opcode> TASL
+%token <opcode> TBCC
+%token <opcode> TBCS
+%token <opcode> TBEQ
+%token <opcode> TBIT
+%token <opcode> TBMI
+%token <opcode> TBNE
+%token <opcode> TBPL
+%token <opcode> TBRK
+%token <opcode> TBVC
+%token <opcode> TBVS
+%token <opcode> TCLC
+%token <opcode> TCLD
+%token <opcode> TCLI
+%token <opcode> TCLV
+%token <opcode> TCMP
+%token <opcode> TCPX
+%token <opcode> TCPY
+%token <opcode> TDEC
+%token <opcode> TDEX
+%token <opcode> TDEY
+%token <opcode> TEOR
+%token <opcode> TINC
+%token <opcode> TINX
+%token <opcode> TINY
+%token <opcode> TJMP
+%token <opcode> TJSR
+%token <opcode> TLDA
+%token <opcode> TLDX
+%token <opcode> TLDY
+%token <opcode> TLSR
+%token <opcode> TNOP
+%token <opcode> TORA
+%token <opcode> TPHA
+%token <opcode> TPHP
+%token <opcode> TPLA
+%token <opcode> TPLP
+%token <opcode> TROL
+%token <opcode> TROR
+%token <opcode> TRTI
+%token <opcode> TRTS
+%token <opcode> TSBC
+%token <opcode> TSEC
+%token <opcode> TSED
+%token <opcode> TSEI
+%token <opcode> TSTA
+%token <opcode> TSTX
+%token <opcode> TSTY
+%token <opcode> TTAX
+%token <opcode> TTAY
+%token <opcode> TTSX
+%token <opcode> TTXA
+%token <opcode> TTXS
+%token <opcode> TTYA
+
+%type <opcode> IMPLICIT_OP
+%type <opcode> ACCUM_OP
+%type <opcode> IMMEDIATE_OP
+%type <opcode> REL_OP
+%type <opcode> INDIRECT_OP
+%type <opcode> IND_XY_OP
+%type <opcode> ABS_OP
+%type <opcode> ZP_ABS_ALL_OP
+
 %token <byte> BYTE
 %token <word> WORD
 %token <string> XREG
@@ -114,7 +178,6 @@ void y_dump_value(value_t *value);
 %type <arithop> binary_operator
 %type <arithop> unary_operator
 
-
 %left BAND BXOR BOR
 
 %left AND OR
@@ -138,26 +201,136 @@ program: line {}
 | program line {}
 ;
 
-line: OP EOL { y_add_opdata($1, CPU_ADDR_MODE_IMPLICIT, NULL); parser_line++; }
-| OP AREG EOL { y_add_opdata($1, CPU_ADDR_MODE_ACCUMULATOR, NULL); parser_line++; }
-| OP '#' expression EOL { y_add_opdata($1, CPU_ADDR_MODE_IMMEDIATE, $3); parser_line++; } // Must be BYTE
-| RELOP expression EOL { y_add_opdata($1, CPU_ADDR_MODE_RELATIVE, $2); parser_line++;} // Must be BYTE
-| OP expression EOL { y_add_opdata($1, CPU_ADDR_MODE_UNKNOWN, $2); parser_line++; } // OR REL!
-| OP expression ',' XREG EOL { y_add_opdata($1, CPU_ADDR_MODE_UNKNOWN_X, $2); parser_line++; } // should be word, optimize at compile
-| OP expression ',' YREG EOL { y_add_opdata($1, CPU_ADDR_MODE_UNKNOWN_Y, $2); parser_line++; } // should be word, optimize at compile
-| OP '(' expression ')' EOL { y_add_opdata($1, CPU_ADDR_MODE_INDIRECT, $3); parser_line++; } // Must be WORD
-| OP '(' expression ',' XREG ')' EOL { y_add_opdata($1, CPU_ADDR_MODE_IND_X, $3); parser_line++; } // Must be BYTE
-| OP '(' expression ')' ',' YREG EOL { y_add_opdata($1, CPU_ADDR_MODE_IND_Y, $3); parser_line++; } // Must be BYTE
-| LABEL EQ expression EOL { y_add_symtable($1, $3); parser_line++; }
-| LABEL '=' expression EOL { y_add_symtable($1, $3); parser_line++; }
-| LABEL { y_add_wordsym($1, compiler_offset); } /* an address label */
-| EOL { parser_line++; }
-| MUL '=' expression EOL { y_add_offset($3); parser_line++; }
-| ORG expression EOL { y_add_offset($2); parser_line++; }
-| BYTELITERAL bytestring EOL { parser_line++; }
-| WORDLITERAL wordstring EOL { parser_line++; }
+line: EOL { parser_line++; }
+| LINE EOL { parser_line++; }
+| LABELLINE EOL { parser_line++; }
+| LABEL LABELLINE EOL { y_add_wordsym($1, compiler_offset); parser_line++; }
 ;
 
+/* line that cannot be labeled */
+LINE: MUL '=' expression { y_add_offset($3); }
+| ORG expression { y_add_offset($2); }
+| LABEL { y_add_wordsym($1, compiler_offset); }
+| LABEL EQ expression { y_add_symtable($1, $3); }
+| LABEL '=' expression { y_add_symtable($1, $3); }
+;
+
+/* lines that can have an optional label */
+LABELLINE: OPCODE_SEQ
+| BYTELITERAL bytestring
+| WORDLITERAL wordstring
+;
+
+/* valid opcode data */
+OPCODE_SEQ: IMPLICIT_OP { y_add_opdata($1, CPU_ADDR_MODE_IMPLICIT, NULL); }
+| ACCUM_OP { y_add_opdata($1, CPU_ADDR_MODE_ACCUMULATOR, NULL); }
+| ACCUM_OP AREG { y_add_opdata($1, CPU_ADDR_MODE_ACCUMULATOR, NULL); }
+| IMMEDIATE_OP '#' expression { y_add_opdata($1, CPU_ADDR_MODE_IMMEDIATE, $3); }
+| REL_OP expression { y_add_opdata($1, CPU_ADDR_MODE_RELATIVE, $2); }
+| ABS_OP expression { y_add_opdata($1, CPU_ADDR_MODE_ABSOLUTE, $2); }
+| ZP_ABS_ALL_OP expression { y_add_opdata($1, CPU_ADDR_MODE_UNKNOWN, $2); }
+| ZP_ABS_ALL_OP expression ',' XREG { y_add_opdata($1, CPU_ADDR_MODE_UNKNOWN_X, $2); }
+| ZP_ABS_ALL_OP expression ',' YREG { y_add_opdata($1, CPU_ADDR_MODE_UNKNOWN_Y, $2); }
+| INDIRECT_OP '(' expression ')' { y_add_opdata($1, CPU_ADDR_MODE_INDIRECT, $3); }
+| IND_XY_OP '(' expression ',' XREG ')' { y_add_opdata($1, CPU_ADDR_MODE_IND_X, $3); }
+| IND_XY_OP '(' expression ')' ',' YREG { y_add_opdata($1, CPU_ADDR_MODE_IND_Y, $3); }
+;
+
+// CPU_ADDR_MODE_IMPLICIT
+IMPLICIT_OP: TBRK { $$ = $1; }
+| TPHP { $$ = $1; }
+| TCLC { $$ = $1; }
+| TNOP { $$ = $1; }
+| TPLP { $$ = $1; }
+| TSEC { $$ = $1; }
+| TRTI { $$ = $1; }
+| TPHA { $$ = $1; }
+| TCLI { $$ = $1; }
+| TRTS { $$ = $1; }
+| TPLA { $$ = $1; }
+| TSEI { $$ = $1; }
+| TDEY { $$ = $1; }
+| TTXA { $$ = $1; }
+| TTYA { $$ = $1; }
+| TTXS { $$ = $1; }
+| TTAY { $$ = $1; }
+| TTAX { $$ = $1; }
+| TCLV { $$ = $1; }
+| TTSX { $$ = $1; }
+| TINY { $$ = $1; }
+| TDEX { $$ = $1; }
+| TCLD { $$ = $1; }
+| TINX { $$ = $1; }
+| TSED { $$ = $1; }
+;
+
+// CPU_ADDR_MODE_ACCUMULATOR
+ACCUM_OP: TASL { $$ = $1; }
+| TROL { $$ = $1; }
+| TLSR { $$ = $1; }
+| TROR { $$ = $1; }
+;
+
+// CPU_ADDR_MODE_IMMEDIATE
+IMMEDIATE_OP: TORA { $$ = $1; }
+| TAND { $$ = $1; }
+| TEOR { $$ = $1; }
+| TADC { $$ = $1; }
+| TLDY { $$ = $1; }
+| TLDX { $$ = $1; }
+| TLDA { $$ = $1; }
+| TCPY { $$ = $1; }
+| TCMP { $$ = $1; }
+| TCPX { $$ = $1; }
+| TSBC { $$ = $1; }
+;
+
+// CPU_ADDR_MODE_RELATIVE
+REL_OP: TBPL { $$ = $1; }
+| TBMI { $$ = $1; }
+| TBVC { $$ = $1; }
+| TBVS { $$ = $1; }
+| TBCC { $$ = $1; }
+| TBCS { $$ = $1; }
+| TBNE { $$ = $1; }
+| TBEQ { $$ = $1; }
+;
+
+// CPU_ADDR_MODE_INDIRECT
+INDIRECT_OP: TJMP { $$ = $1; }
+;
+
+// CPU_ADDR_MODE_IND_Y
+IND_XY_OP: TORA { $$ = $1; }
+| TAND { $$ = $1; }
+| TEOR { $$ = $1; }
+| TADC { $$ = $1; }
+| TSTA { $$ = $1; }
+| TLDA { $$ = $1; }
+| TCMP { $$ = $1; }
+| TSBC { $$ = $1; }
+;
+
+// ZP_Y, ZP_X, ZP, ABS_Y, ABS_X, ABS
+ZP_ABS_ALL_OP: IND_XY_OP { $$ = $1; }
+| TASL { $$ = $1; }
+| TROL { $$ = $1; }
+| TLSR { $$ = $1; }
+| TROR { $$ = $1; }
+| TSTX { $$ = $1; }   // strangely no stx abs,y.. pick that up in pass2
+| TLDX { $$ = $1; }
+| TDEC { $$ = $1; }
+| TINC { $$ = $1; }
+| TBIT { $$ = $1; }   // ZP/ABS only
+| TSTY { $$ = $1; }   // ZP/ABS/ZP,X only
+| TLDY { $$ = $1; }   // ZP/ABS/ZP,X/ABS,X
+| TCPY { $$ = $1; }   // ZP/ABS only
+| TCPX { $$ = $1; }   // ZP/ABS only
+;
+
+ABS_OP: TJMP { $$ = $1; }
+| TJSR { $$ = $1; }
+;
 
 expression: WORD { $$ = y_new_nval(Y_TYPE_WORD, $1, NULL); }
 | BYTE { $$ = y_new_nval(Y_TYPE_BYTE, $1, NULL); }
