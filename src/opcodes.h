@@ -60,7 +60,7 @@
 #define CPU_OPCODE_PHP 0x2f
 #define CPU_OPCODE_PLA 0x30 /* undoc */
 #define CPU_OPCODE_PLP 0x31
-#define CPU_OPCODE_RLA 0x32
+#define CPU_OPCODE_RLA 0x32 /* undoc */
 #define CPU_OPCODE_ROL 0x33
 #define CPU_OPCODE_ROR 0x34
 #define CPU_OPCODE_RRA 0x35 /* undoc */
@@ -77,7 +77,7 @@
 #define CPU_OPCODE_STX 0x40
 #define CPU_OPCODE_STY 0x41
 #define CPU_OPCODE_SX7 0x42 /* undoc */
-#define CPU_OPCODE_SY7 0x43
+#define CPU_OPCODE_SY7 0x43 /* undoc */
 #define CPU_OPCODE_TAX 0x44
 #define CPU_OPCODE_TAY 0x45
 #define CPU_OPCODE_TSX 0x46
