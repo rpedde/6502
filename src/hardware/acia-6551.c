@@ -261,6 +261,7 @@ uint8_t uart_memop(hw_reg_t *hw, uint16_t addr, uint8_t memop, uint8_t data) {
                     recalculate_irq(state);
                 }
             }
+            unlock_state(state);
         } else {
             write(state->pty, &data, 1);
         }
