@@ -57,6 +57,8 @@ typedef struct opdata_t_struct {
 typedef struct symtable_t_struct {
     char *label;
     value_t *value;
+    char *file;
+    int line;
     struct symtable_t_struct *next;
 } symtable_t;
 

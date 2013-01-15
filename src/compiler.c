@@ -33,7 +33,7 @@ uint16_t min_split_gap = MIN_SPLIT_GAP;
 uint8_t skip_data_byte = 0xea;
 uint8_t hex_bytes_per_line = HEX_BYTES_PER_LINE;
 
-symtable_t symtable = { NULL, NULL, NULL };
+symtable_t symtable = { NULL, NULL, NULL, 0, NULL };
 
 extern FILE *yyin;
 extern int yyparse(void*);
@@ -152,8 +152,52 @@ void pass2(void) {
     value_t *operand = NULL;
     uint16_t eaddr, taddr;
     int offset;
+    int symchanges = 1;
+    int failed_symchanges = 0;
+    symtable_t *psym;
 
     INFO("Pass 2: Symbol resolution");
+
+    /* first, walk through the entire symbol table and express everything */
+    while(symchanges) {
+        psym = symtable.next;
+        symchanges = 0;
+        failed_symchanges = 0;
+        while(psym) {
+            if ((psym->value->type != Y_TYPE_BYTE) &&
+                (psym->value->type != Y_TYPE_WORD)) {
+                if(y_can_evaluate(psym->value)) {
+                    operand = y_evaluate_val(psym->value, psym->line, 0);
+                    if(operand) {
+                        free(psym->value);
+                        psym->value = operand;
+                        symchanges++;
+                    } else {
+                        failed_symchanges++;
+                    }
+                } else {
+                    failed_symchanges++;
+                }
+            }
+            psym = psym->next;
+        }
+    }
+
+    /* any symbol we can't resolve is a problem */
+    if(failed_symchanges) {
+        psym = symtable.next;
+        while(psym) {
+            parser_line = psym->line;
+            parser_file = psym->file;
+
+            if ((psym->value->type != Y_TYPE_BYTE) &&
+                (psym->value->type != Y_TYPE_WORD)) {
+                PERROR("cannot resolve symbol: %s", psym->label);
+            }
+            psym = psym->next;
+        }
+        exit(EXIT_FAILURE);
+    }
 
     while(pcurrent) {
         parser_file = pcurrent->data->file;

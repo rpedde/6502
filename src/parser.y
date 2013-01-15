@@ -988,6 +988,8 @@ void y_add_symtable(char *label, value_t *value) {
 
     pnew->label = nlabel;
     pnew->value = value;
+    pnew->file = strdup(parser_file);
+    pnew->line = parser_line;
 
     /* here's a question... should we allow symbols to be
        deferred? */
