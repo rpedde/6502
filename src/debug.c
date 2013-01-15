@@ -14,6 +14,7 @@ void debug_level(int newlevel) {
     debug_threshold = newlevel;
 }
 
+
 void debug_printf(int level, char *format, ...) {
     va_list args;
     if(level > debug_threshold)

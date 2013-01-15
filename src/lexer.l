@@ -18,25 +18,45 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-
+#include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "compiler.h"
 #include "debug.h"
 #include "parser.h"
 #include "opcodes.h"
 
+#define MAX_INCLUDE_DEPTH 10
+
 extern int yydebug;
 extern int parse_failure;
-extern int parser_line;
 
+char *parser_file;
+int parser_line = 1;
+
+typedef struct include_stack_t {
+    char *file;
+    int line_no;
+    YY_BUFFER_STATE yy_buffer_state;
+} include_stack_t;
+
+int include_depth=0;
+
+include_stack_t l_include_stack[MAX_INCLUDE_DEPTH];
+
+int l_parse_failure;
 unsigned int tempint;
 
 void l_include_file(char *filename);
 void l_include_error(void);
+void l_advance_line(void);
+int l_eof(void);
 
 uint16_t t161;
 uint8_t t81;
@@ -59,19 +79,16 @@ qstring \"[^\"\n]*[\"\n]
 
 [\t ]+
 \r
-;.*\n                          { return(EOL); }
-\n                             { return(EOL); }
+;.*\n                          { l_advance_line(); return(EOL); }
+\n                             { l_advance_line(); return(EOL); }
 
 
 (include|#include|.include)    BEGIN(incl);
 <incl>[\t ]+
 <incl>[^\t\n ]+                { l_include_file(yytext); }
 <incl>\n                       { l_include_error(); }
-<<EOF>>                        { yypop_buffer_state();
-                                 if(!YY_CURRENT_BUFFER)
-                                     yyterminate();
-                                 BEGIN(INITIAL);
-                               }
+<<EOF>>                        { if(l_eof()) yyterminate(); else return(EOL); }
+
 
 adc                            { yylval.opcode = CPU_OPCODE_ADC; return(TADC); }
 and                            { yylval.opcode = CPU_OPCODE_AND; return(TAND); }
@@ -180,8 +197,8 @@ equ                            { return(EQ); }
 %%
 
 void yyerror(char *msg) {
-    parse_failure = 1;
-    DPRINTF(DBG_ERROR,"Parser error, line %d: %s\n",yylineno, msg);
+    l_parse_failure = 1;
+    PERROR("%s", msg);
 }
 
 /**
@@ -193,6 +210,11 @@ void l_include_file(char *filename) {
     char *startptr = filename;
     char *fname;
 
+    if(include_depth >= MAX_INCLUDE_DEPTH) {
+        PFATAL("Includes nested too deeply");
+        exit(EXIT_FAILURE);
+    }
+
     if(*startptr == '\"')
         startptr++;
 
@@ -200,27 +222,90 @@ void l_include_file(char *filename) {
     if(fname[strlen(fname) - 1] == '\"')
         fname[strlen(fname) - 1] = 0;
 
-    DPRINTF(DBG_INFO, "Opening %s for inclusion\n", fname);
+    PINFO("including %s", fname);
+
+    l_include_stack[include_depth].yy_buffer_state = YY_CURRENT_BUFFER;
 
     yyin = fopen(fname, "r" );
 
     if ( ! yyin ) {
-        DPRINTF(DBG_FATAL, "Line %d: Cannot open file '%s' for include\n",
-                parser_line, fname);
+        PFATAL("cannot open file '%s' for include", fname);
         exit(EXIT_FAILURE);
     }
 
-    free(fname);
-    yypush_buffer_state(yy_create_buffer(yyin, YY_BUF_SIZE ));
+    include_depth++;
+    l_include_stack[include_depth].line_no = 1;
+    l_include_stack[include_depth].file = fname;
+
+    parser_line = 1;
+    parser_file = fname;
+
+    yy_switch_to_buffer(yy_create_buffer(yyin, YY_BUF_SIZE));
 
     BEGIN(INITIAL);
 }
 
 void l_include_error(void) {
-     DPRINTF(DBG_FATAL, "Missing filename for include\n");
+     PFATAL("missing filename for include\n");
      exit(EXIT_FAILURE);
 }
 
+
+void l_advance_line(void) {
+    l_include_stack[include_depth].line_no++;
+    parser_line = l_include_stack[include_depth].line_no;
+}
+
+/**
+ * kick off parsing the top level file
+ *
+ * @param file top-level file to parse
+ */
+int l_parse_file(char *file) {
+    int result;
+    FILE *fin;
+    value_t star_symbol = { Y_TYPE_WORD, 0, 0, "*", NULL, NULL };
+
+    fin = fopen(file, "r");
+    if(!fin) {
+        PFATAL("cannot open file %s: %s",
+              file, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    l_include_stack[include_depth].file = file;
+    l_include_stack[include_depth].line_no = 1;
+
+    parser_file = file;
+    parser_line = 1;
+
+    /* add a dummy symtable entry */
+    y_add_symtable("*", &star_symbol);
+
+    yyin = fin;
+    result = yyparse(NULL);
+    fclose(fin);
+
+    return (!l_parse_failure);
+}
+
+int l_eof(void) {
+    if(include_depth == 0) {
+        PDEBUG("Last EOF... terminating");
+        return 1;
+    } else {
+        free(l_include_stack[include_depth].file);
+        yy_delete_buffer(YY_CURRENT_BUFFER);
+
+        include_depth--;
+        parser_line = l_include_stack[include_depth].line_no;
+        parser_file = l_include_stack[include_depth].file;
+        yy_switch_to_buffer(l_include_stack[include_depth].yy_buffer_state);
+        PDEBUG("resume parsing");
+    }
+
+    return 0;
+}
 
 /* Local Variables:  */
 /* mode: fundamental */

@@ -34,12 +34,10 @@ uint8_t skip_data_byte = 0xea;
 uint8_t hex_bytes_per_line = HEX_BYTES_PER_LINE;
 
 symtable_t symtable = { NULL, NULL, NULL };
-int parser_line = 1;
 
 extern FILE *yyin;
 extern int yyparse(void*);
 
-int parse_failure = 0;
 uint16_t compiler_offset = 0x8000;
 
 typedef struct opdata_list_t_struct {
@@ -120,13 +118,9 @@ void add_opdata(opdata_t *pnew) {
     list_tailp = pnewitem;
 }
 
-uint16_t opcode_lookup(opdata_t *op, int line, int fatal) {
+uint16_t opcode_lookup(opdata_t *op, int fatal) {
     opcode_t *ptable = (opcode_t*)&cpu_opcode_map;
     int index = 0;
-
-    /* DPRINTF(DBG_DEBUG, " - Looking up opcode '%s' (%s)\n", */
-    /*         cpu_opcode_mnemonics[op->opcode_family], */
-    /*         cpu_addressing_mode[op->addressing_mode]); */
 
     while(index < 256 && (op->opcode_family != ptable->opcode_family ||
                           op->addressing_mode != ptable->addressing_mode)) {
@@ -136,9 +130,9 @@ uint16_t opcode_lookup(opdata_t *op, int line, int fatal) {
 
     if(index == 256) {
         if(fatal) {
-            DPRINTF(DBG_ERROR, "Can't lookup indexing mode '%s' for '%s' on line %d\n",
-                    cpu_addressing_mode[op->addressing_mode],
-                    cpu_opcode_mnemonics[op->opcode_family],line);
+            PERROR("Can't lookup indexing mode '%s' for '%s'",
+                   cpu_addressing_mode[op->addressing_mode],
+                   cpu_opcode_mnemonics[op->opcode_family]);
             exit(EXIT_FAILURE);
         } else {
             return OPCODE_NOTFOUND;
@@ -159,29 +153,27 @@ void pass2(void) {
     uint16_t eaddr, taddr;
     int offset;
 
-    DPRINTF(DBG_INFO, "Pass 2: Symbol resolution\n");
+    INFO("Pass 2: Symbol resolution");
 
     while(pcurrent) {
+        parser_file = pcurrent->data->file;
+        parser_line = pcurrent->data->line;
+
         if (pcurrent->data->type == TYPE_DATA) {
             /* force expression of values */
             operand = y_evaluate_val(pcurrent->data->value, pcurrent->data->line, pcurrent->data->offset);
             if(!operand) {
-                DPRINTF(DBG_FATAL, "Line %d ($%04x): unresolvable symbol \n", pcurrent->data->line,
-                        pcurrent->data->offset);
+                PFATAL("unresolvable symbol");
                 exit(EXIT_FAILURE);
             }
             pcurrent->data->value = operand;
         }
 
         if (pcurrent->data->type == TYPE_INSTRUCTION) {
-            DPRINTF(DBG_DEBUG, "Line %d ($%04x)\n", pcurrent->data->line,
-                    pcurrent->data->offset);
-
             if(pcurrent->data->value) {
                 operand = y_evaluate_val(pcurrent->data->value, pcurrent->data->line, pcurrent->data->offset);
                 if(!operand) {
-                    DPRINTF(DBG_FATAL, "Line %d ($%04x): unresolvable symbol \n", pcurrent->data->line,
-                            pcurrent->data->offset);
+                    PFATAL("unresolvable symbol");
                     exit(EXIT_FAILURE);
                 }
                 pcurrent->data->value = operand;
@@ -198,8 +190,7 @@ void pass2(void) {
             case CPU_ADDR_MODE_IND_X:
             case CPU_ADDR_MODE_IND_Y:
                 if(!y_value_is_byte(operand)) {
-                    DPRINTF(DBG_ERROR, "Line %d: Addressing mode requires "
-                            "BYTE, operand is WORD\n", pcurrent->data->line);
+                    PERROR("Addressing mode requires BYTE, not WORD");
                     exit(EXIT_FAILURE);
                 }
                 value_demote(operand, pcurrent->data->line);
@@ -219,10 +210,7 @@ void pass2(void) {
                 offset = taddr - eaddr;
 
                 if(offset < -128 || offset > 127) {
-                    DPRINTF(DBG_ERROR, "Line %d ($%04x): Branch out of range ($%04x)\n",
-                            pcurrent->data->line,
-                            pcurrent->data->offset,
-                            operand->word);
+                    PERROR("Branch out of range");
                     exit(EXIT_FAILURE);
                 }
 
@@ -233,9 +221,8 @@ void pass2(void) {
                 } else {
                     operand->byte = offset;
                 }
-                DPRINTF(DBG_DEBUG, " - Line %d: Fixed up branch to $%02x\n",
-                        pcurrent->data->line,
-                        (uint16_t)operand->byte);
+                PDEBUG("Fixed up branch to $%02x",
+                      (uint16_t)operand->byte);
                 break;
 
             case CPU_ADDR_MODE_ABSOLUTE:
@@ -246,8 +233,7 @@ void pass2(void) {
                 break;
 
             default:
-                DPRINTF(DBG_ERROR, "Line %d: Error:  Unknown addressing mode\n",
-                        pcurrent->data->line);
+                PERROR("unnknown addressing mode");
             }
         }
         pcurrent = pcurrent->next;
@@ -294,7 +280,7 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
 
     if(write_map) {
         map = make_fh(basename, "map", 0);
-        DPRINTF(DBG_INFO, "Writing output.\n");
+        INFO("Writing output.");
 
         fprintf(map, "Symbol Table:\n=======================================================\n\n");
 
@@ -308,7 +294,7 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
                 else if (psym->value->type == Y_TYPE_WORD)
                     fprintf(map, "$%04x", psym->value->word);
                 else {
-                    DPRINTF(DBG_ERROR, "Unexpressed symbol table entry: %s\n", psym->label);
+                    PERROR("Unexpressed symbol table entry: %s", psym->label);
                     fprintf(map, "???");
                 }
                 fprintf(map,"\n");
@@ -319,6 +305,9 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
         fprintf(map, "\n\nOutput:\n=======================================================\n\n");
 
         while(pcurrent) {
+            parser_file = pcurrent->data->file;
+            parser_line = pcurrent->data->line;
+
             switch(pcurrent->data->type) {
             case TYPE_INSTRUCTION:
                 len = 0;
@@ -374,7 +363,7 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
                     fprintf(map, "($%02x),Y", pcurrent->data->value->byte);
                     break;
                 default:
-                    DPRINTF(DBG_ERROR,"Unknown addressing mode in map file\n");
+                    PERROR("Unknown addressing mode");
                     exit(EXIT_FAILURE);
                 }
 
@@ -401,13 +390,13 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
                     fprintf(map, "%*c", 20 - len, ' ');
                     fprintf(map, ".data %04x", pvalue->word);
                 } else {
-                    DPRINTF(DBG_ERROR, "Bad Y-type in static data\n");
+                    PERROR("Bad Y-type in static data");
                     exit(EXIT_FAILURE);
                 }
                 fprintf(map, "\n");
                 break;
             default:
-                DPRINTF(DBG_ERROR, "unhandled optype while printing map\n");
+                PERROR("unhandled optype while printing map");
                 exit (EXIT_FAILURE);
             }
             pcurrent = pcurrent->next;
@@ -440,9 +429,10 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
         if(write_hex)
             hex = make_fh(basename, "hex", 0);
 
-        DPRINTF(DBG_INFO, "Fast-forwarded offset to $%04x\n", current_offset);
-
         while(pcurrent) {
+            parser_file = pcurrent->data->file;
+            parser_line = pcurrent->data->line;
+
             /* decide if we need to split */
             last_offset = current_offset; /* this is actually the calculated offset */
             current_offset = pcurrent->data->offset;
@@ -452,8 +442,8 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
                  * split is less than the min_split_gap */
                 if(write_bin) {
                     if (((current_offset - last_offset) < min_split_gap) || (!split_bin)) {
-                        DPRINTF(DBG_DEBUG, "Filling %d byte gap to $%04x\n",
-                                current_offset - last_offset, current_offset);
+                        PDEBUG("Filling %d byte gap to $%04x",
+                               current_offset - last_offset, current_offset);
 
                         while(last_offset < current_offset) {
                             fprintf(bin, "%c", skip_data_byte);
@@ -525,14 +515,14 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
                     break;
 
                 default:
-                    DPRINTF(DBG_ERROR, "Bad TYPE_DATA writing bin file: %d\n", pcurrent->data->type);
+                    PERROR("bad TYPE_DATA writing bin file: %d", pcurrent->data->type);
                     exit(EXIT_FAILURE);
                 }
                 current_offset += pcurrent->data->len;
                 break;
 
             default:
-                fprintf(stderr, "unhandled data type: %d", pcurrent->data->type);
+                PFATAL("unhandled data type: %d", pcurrent->data->type);
                 exit(EXIT_FAILURE);
             }
 
@@ -551,8 +541,6 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
 }
 
 int main(int argc, char *argv[]) {
-    int result;
-    FILE *fin;
     int option;
     char *basepath;
     char *suffix;
@@ -560,8 +548,6 @@ int main(int argc, char *argv[]) {
     int do_map = 1;
     int do_bin = 1;
     int do_hex = 0;
-
-    value_t star_symbol = { Y_TYPE_WORD, 0, 0, "*", NULL, NULL };
 
     debug_level(2);
 
@@ -607,25 +593,12 @@ int main(int argc, char *argv[]) {
     if((suffix = strrchr(basepath, '.')))
         *suffix = 0;
 
-    fin = fopen(argv[optind], "r");
-    if(!fin) {
-        perror("fopen");
-        exit(EXIT_FAILURE);
-    }
-
-    /* add a dummy symtable entry */
-    y_add_symtable("*", &star_symbol);
-
     compiler_offset = 0x8000;
     last_line_offset = compiler_offset;
 
-    DPRINTF(DBG_INFO, "Pass 1:  Parsing.\n");
-    yyin = fin;
-    result = yyparse(NULL);
-    fclose(fin);
-
-    if(parse_failure) {
-        DPRINTF(DBG_ERROR, "Error parsing file.  Aborting\n");
+    INFO("Pass 1:  Parsing.");
+    if(!l_parse_file(argv[optind])) {
+        ERROR("Aborting");
         exit(EXIT_FAILURE);
     }
 
@@ -636,6 +609,6 @@ int main(int argc, char *argv[]) {
     /* default: map and split bin */
     write_output(basepath, do_map, do_bin, do_hex, do_split);
 
-    DPRINTF(DBG_INFO, "Done.\n");
+    INFO("Done.");
     exit(EXIT_SUCCESS);
 }

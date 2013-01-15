@@ -203,10 +203,10 @@ program: line {}
 | program line {}
 ;
 
-line: EOL { parser_line++; last_line_offset = compiler_offset; }
-| LINE EOL { parser_line++; last_line_offset = compiler_offset; }
-| LABELLINE EOL { parser_line++; last_line_offset = compiler_offset; }
-| LABEL LABELLINE EOL { y_add_wordsym($1, last_line_offset); last_line_offset = compiler_offset; parser_line++; }
+line: EOL { last_line_offset = compiler_offset; }
+| LINE EOL { last_line_offset = compiler_offset; }
+| LABELLINE EOL { last_line_offset = compiler_offset; }
+| LABEL LABELLINE EOL { y_add_wordsym($1, last_line_offset); last_line_offset = compiler_offset; }
 ;
 
 /* line that cannot be labeled */
@@ -416,7 +416,7 @@ value_t *y_new_nval(int type, uint16_t nval, char *lval) {
         pnew->word = nval;
         break;
     default:
-        DPRINTF(DBG_ERROR, "Bad type\n");
+        PERROR("Bad type");
         exit(EXIT_FAILURE);
         break;
     }
@@ -434,7 +434,7 @@ void *error_malloc(ssize_t size) {
 
     retval = (void*)malloc(size);
     if(!retval) {
-        DPRINTF(DBG_FATAL, "Malloc: %s", strerror(errno));
+        FATAL("malloc: %s", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
@@ -448,25 +448,25 @@ void *error_malloc(ssize_t size) {
  */
 void y_do_dump_value(value_t *value, int depth) {
     if(!value) {
-        DPRINTF(DBG_DEBUG, "%*c NULL\n", depth*2, ' ');
+        PDEBUG("%*c NULL", depth*2, ' ');
         return;
     }
 
     switch(value->type) {
     case Y_TYPE_WORD:
-        DPRINTF(DBG_DEBUG, "%*c $%04x\n", depth*2, ' ', value->word);
+        PDEBUG("%*c $%04x", depth*2, ' ', value->word);
         break;
     case Y_TYPE_BYTE:
-        DPRINTF(DBG_DEBUG, "%*c $%02x\n", depth*2, ' ', value->byte);
+        PDEBUG("%*c $%02x", depth*2, ' ', value->byte);
         break;
     case Y_TYPE_LABEL:
-        DPRINTF(DBG_DEBUG, "%*c $%s\n", depth*2, ' ', value->label);
+        PDEBUG( "%*c $%s", depth*2, ' ', value->label);
         break;
     case Y_TYPE_ARITH:
-        DPRINTF(DBG_DEBUG, "%*c Arith op $%04x\n", depth*2, ' ', value->word);
-        DPRINTF(DBG_DEBUG, "%*c L:\n", depth*2, ' ');
+        PDEBUG("%*c Arith op $%04x", depth*2, ' ', value->word);
+        PDEBUG("%*c L:\n", depth*2, ' ');
         y_do_dump_value(value->left, depth + 1);
-        DPRINTF(DBG_DEBUG, "%*c R:\n", depth*2, ' ');
+        PDEBUG("%*c R:", depth*2, ' ');
         y_do_dump_value(value->right, depth + 1);
         break;
     }
@@ -497,7 +497,7 @@ int y_can_evaluate(value_t *value) {
     assert(value);
 
     if(!value) {
-        DPRINTF(DBG_FATAL, "Internal error\n");
+        PFATAL("Internal error");
         exit(EXIT_FAILURE);
     }
 
@@ -521,7 +521,7 @@ int y_can_evaluate(value_t *value) {
         return 0;
     }
 
-    DPRINTF(DBG_FATAL, "Cannot evaluate a value of type %d\n", value->type);
+    PFATAL("Cannot evaluate a value of type %d\n", value->type);
     exit(EXIT_FAILURE);
 }
 
@@ -539,7 +539,7 @@ int y_value_is_byte(value_t *value) {
     if(y_can_evaluate(value)) {
         me = y_evaluate_val(value, parser_line, compiler_offset);
         if(!me) {
-            DPRINTF(DBG_FATAL, "Can't evaluate something I should have!\n");
+            PFATAL("Can't evaluate something I should have!");
             exit(EXIT_FAILURE);
         }
 
@@ -570,7 +570,7 @@ int y_value_is_byte(value_t *value) {
     }
 
     /* can_evaluate should have already thrown this.  meh. */
-    DPRINTF(DBG_FATAL, "Cannot evaluate a value of type %d\n", value->type);
+    PFATAL("Cannot evaluate a value of type %d", value->type);
     exit(EXIT_FAILURE);
 }
 
@@ -604,8 +604,8 @@ void value_promote(value_t *value, int line) {
 void value_demote(value_t *value, int line) {
     if(value->type == Y_TYPE_WORD) {
         if(value->word > 255) {
-            DPRINTF(DBG_FATAL, "Line %d: Cannot demote word to byte",
-                    line, value->word);
+            FATAL("Line %d: Cannot demote word to byte",
+                  line, value->word);
         }
         value->byte = value->word;
         value->type = Y_TYPE_BYTE;
@@ -634,8 +634,8 @@ void y_value_free(value_t *value) {
         break;
     default:
         /* can't happen */
-        DPRINTF(DBG_FATAL, "Unexpected y-value in y_value_free: %d\n",
-                value->type);
+        PFATAL("Unexpected y-value in y_value_free: %d",
+               value->type);
         exit(EXIT_FAILURE);
     }
 }
@@ -676,7 +676,7 @@ value_t *y_evaluate_val(value_t *value, int line, uint16_t addr) {
     if(value->type == Y_TYPE_LABEL) {
         /* dummy up the "*" label */
         if (strcmp(value->label, "*") == 0) {
-            DPRINTF(DBG_DEBUG, "Dummying * label to $%04x\n", addr);
+            PDEBUG("Dummying * label to $%04x", addr);
 
             retval = (value_t*)error_malloc(sizeof(value_t));
             retval->type = Y_TYPE_WORD;
@@ -781,7 +781,7 @@ value_t *y_evaluate_val(value_t *value, int line, uint16_t addr) {
             break;
 
         default:
-            DPRINTF(DBG_ERROR, "Unexpected op: %d\n", value->word);
+            PERROR("Unexpected op: %d", value->word);
             exit(EXIT_FAILURE);
         }
 
@@ -799,7 +799,7 @@ value_t *y_evaluate_val(value_t *value, int line, uint16_t addr) {
         return retval;
     }
 
-    DPRINTF(DBG_ERROR,"Bad y-type in eval (%d)\n", value->type);
+    PERROR("Bad y-type in eval (%d)", value->type);
     exit(EXIT_FAILURE);
 }
 
@@ -811,7 +811,7 @@ value_t *y_evaluate_val(value_t *value, int line, uint16_t addr) {
 void y_add_wordsym(char *label, uint16_t word) {
     value_t *value;
 
-    DPRINTF(DBG_DEBUG, "Adding WORD symbol '%s' as %04x\n", label, word);
+    PDEBUG("Adding WORD symbol '%s' as %04x", label, word);
     value = y_new_nval(Y_TYPE_WORD, word, NULL);
     y_add_symtable(label, value);
 }
@@ -822,7 +822,7 @@ void y_add_wordsym(char *label, uint16_t word) {
 void y_add_bytesym(char *label, uint8_t byte) {
     value_t *value;
 
-    DPRINTF(DBG_DEBUG, "Adding BYTE symbol '%s' as %02x\n", label, byte);
+    PDEBUG("Adding BYTE symbol '%s' as %02x", label, byte);
     value = y_new_nval(Y_TYPE_BYTE, byte, NULL);
     y_add_symtable(label, value);
 }
@@ -873,6 +873,9 @@ void y_add_byte(uint8_t byte) {
     pvalue->len = 1;
     pvalue->offset = compiler_offset;
 
+    pvalue->line = parser_line;
+    pvalue->file = parser_file;
+
     compiler_offset += 1;
     add_opdata(pvalue);
 }
@@ -899,6 +902,9 @@ void y_add_word(uint16_t word) {
     pvalue->len = 2;
     pvalue->offset = compiler_offset;
 
+    pvalue->line = parser_line;
+    pvalue->file = parser_file;
+
     compiler_offset += 2;
     add_opdata(pvalue);
 }
@@ -924,10 +930,13 @@ void y_add_nval(value_t *value) {
         pvalue->len = 2;
         break;
     default:
-        fprintf(stderr, "line %d: don't know type of arith expression\n",
+        fprintf(stderr, "line %d: don't know type of arith expression",
             parser_line);
         exit(EXIT_FAILURE);
     }
+
+    pvalue->line = parser_line;
+    pvalue->file = parser_file;
 
     pvalue->offset = compiler_offset;
     compiler_offset += pvalue->len;
@@ -942,28 +951,15 @@ void y_add_offset(value_t *value) {
     value_t *concrete_value;
 
     if(!y_can_evaluate(value)) {
-        DPRINTF(DBG_FATAL, "Line %d: cannot resolve offset.\n", parser_line);
+        PFATAL("cannot resolve offset.");
         exit(EXIT_FAILURE);
     }
 
     concrete_value = y_evaluate_val(value, parser_line, compiler_offset);
     value_promote(concrete_value, parser_line);
 
-    DPRINTF(DBG_DEBUG, "Adding new origin '%04x'\n", concrete_value->word);
+    PDEBUG("Adding new origin '%04x'", concrete_value->word);
     compiler_offset = concrete_value->word;
-
-    /* pvalue = (opdata_t *)malloc(sizeof(opdata_t)); */
-    /* if(!pvalue) { */
-    /*     perror("malloc"); */
-    /*     exit(EXIT_FAILURE); */
-    /* } */
-
-    /* memset(pvalue,0,sizeof(opdata_t)); */
-    /* pvalue->type = TYPE_OFFSET; */
-    /* pvalue->value = concrete_value; */
-
-    /* compiler_offset = concrete_value->word; */
-    /* add_opdata(pvalue); */
 }
 
 
@@ -980,18 +976,14 @@ void y_add_symtable(char *label, value_t *value) {
         nlabel[strlen(nlabel) - 1] = 0;
     }
 
-    DPRINTF(DBG_DEBUG, "Adding symbol '%s'\n", nlabel);
+    PDEBUG("Adding symbol '%s'", nlabel);
 
     if(y_lookup_symbol(nlabel)) {
-        DPRINTF(DBG_ERROR, "Error:  duplicate symbol: %s\n", nlabel);
+        PERROR("duplicate symbol: %s", nlabel);
         exit(EXIT_FAILURE);
     }
 
-    pnew = (symtable_t*)malloc(sizeof(symtable_t));
-    if(!pnew) {
-        perror("malloc");
-        exit(EXIT_FAILURE);
-    }
+    pnew = (symtable_t*)error_malloc(sizeof(symtable_t));
 
     pnew->label = nlabel;
     pnew->value = value;
@@ -1047,9 +1039,8 @@ void y_add_opdata(uint8_t opcode_family, uint8_t addressing_mode,
      * label is not yet known, but will be zp.
      */
 
-    DPRINTF(DBG_DEBUG, "line %d ($%04x): adding opdata (%s)\n",
-            parser_line, compiler_offset,
-            cpu_opcode_mnemonics[opcode_family]);
+    PDEBUG("adding opdata (%s)\n",
+           cpu_opcode_mnemonics[opcode_family]);
 
 
     memset(pnew,0,sizeof(opdata_t));
@@ -1069,8 +1060,7 @@ void y_add_opdata(uint8_t opcode_family, uint8_t addressing_mode,
         pnew->value = pvalue;
     }
 
-    DPRINTF(DBG_DEBUG, "line %d ($%04x): operand value:\n",
-            parser_line, compiler_offset);
+    PDEBUG("operand value:");
     y_dump_value(pnew->value);
 
     switch(addressing_mode) {
@@ -1078,7 +1068,7 @@ void y_add_opdata(uint8_t opcode_family, uint8_t addressing_mode,
         /* sometimes things are written as implicit
          * that are actually accumulator.  ASL vs ASL A,
          * for example. */
-        if(opcode_lookup(pnew, parser_line, 0) == OPCODE_NOTFOUND) {
+        if(opcode_lookup(pnew, 0) == OPCODE_NOTFOUND) {
             pnew->addressing_mode = CPU_ADDR_MODE_ACCUMULATOR;
         }
     case CPU_ADDR_MODE_ACCUMULATOR:
@@ -1123,7 +1113,7 @@ void y_add_opdata(uint8_t opcode_family, uint8_t addressing_mode,
                 pnew->addressing_mode += CPU_ADDR_MODE_ZPAGE;
                 pnew->len = 2;
 
-                if(opcode_lookup(pnew, parser_line, 0) == OPCODE_NOTFOUND) {
+                if(opcode_lookup(pnew, 0) == OPCODE_NOTFOUND) {
                     /* nope... let's set it back to absolute */
                     pnew->addressing_mode -= CPU_ADDR_MODE_ZPAGE;
                     pnew->addressing_mode += CPU_ADDR_MODE_ABSOLUTE;
@@ -1139,52 +1129,54 @@ void y_add_opdata(uint8_t opcode_family, uint8_t addressing_mode,
         break;
 
     default:
-        DPRINTF(DBG_FATAL,"Bad addressing mode: %d\n", addressing_mode);
+        PFATAL("Bad addressing mode: %d", addressing_mode);
         break;
     }
 
 
     if(!pnew->len) {
-        DPRINTF(DBG_FATAL, "line %d: unknown opcode length\n", parser_line);
+        PFATAL("unknown opcode length");
         exit(EXIT_FAILURE);
     }
 
-    opcode = opcode_lookup(pnew, parser_line, 1);
+    opcode = opcode_lookup(pnew, 1);
     if(opcode == OPCODE_NOTFOUND) {
-        DPRINTF(DBG_FATAL, "Line %d: cannot resolve opcode for %s as %s\n",
-                cpu_opcode_mnemonics[pnew->opcode_family],
-                cpu_addressing_mode[pnew->addressing_mode]);
+        PFATAL("cannot resolve opcode for %s as %s",
+              cpu_opcode_mnemonics[pnew->opcode_family],
+              cpu_addressing_mode[pnew->addressing_mode]);
         exit(EXIT_FAILURE);
     }
 
-    pnew->opcode = opcode_lookup(pnew, parser_line, 1);
+    pnew->opcode = opcode_lookup(pnew, 1);
 
-    DPRINTF(DBG_DEBUG, "looked up %s/%s as $%02x\n",
-            cpu_opcode_mnemonics[pnew->opcode_family],
-            cpu_addressing_mode[pnew->addressing_mode],
-            pnew->opcode);
+    PDEBUG("looked up %s/%s as $%02x",
+          cpu_opcode_mnemonics[pnew->opcode_family],
+          cpu_addressing_mode[pnew->addressing_mode],
+          pnew->opcode);
 
     if(pnew->value) {
         switch(pnew->value->type) {
         case Y_TYPE_BYTE:
-            DPRINTF(DBG_DEBUG, "operand BYTE: $%02x\n",
-                    pnew->value->byte);
+            PDEBUG("operand BYTE: $%02x",
+                  pnew->value->byte);
             break;
         case Y_TYPE_WORD:
-            DPRINTF(DBG_DEBUG, "operand WORD: $%04x\n",
-                    pnew->value->word);
+            PDEBUG("operand WORD: $%04x",
+                  pnew->value->word);
             break;
         case Y_TYPE_LABEL:
-            DPRINTF(DBG_DEBUG, "unresolved label %s\n",
-                    pnew->value->label);
+            PDEBUG("unresolved label %s",
+                  pnew->value->label);
             break;
         case Y_TYPE_ARITH:
-            DPRINTF(DBG_DEBUG, "unresolvable arithmetic\n");
+            PDEBUG("unresolvable arithmetic");
             break;
         }
     }
 
     pnew->line = parser_line;
+    pnew->file = parser_file;
+
     pnew->offset = compiler_offset;
     compiler_offset += pnew->len;
     add_opdata(pnew);

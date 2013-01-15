@@ -47,6 +47,7 @@ typedef struct opdata_t_struct {
     uint8_t opcode;          /* INSTRUCTION */
     uint8_t addressing_mode; /* INSTRUCTION */
     value_t *value;          /* INSTRUCTION */
+    char *file;
     int needs_fixup;         /* INSTRUCTION */ /* ?? */
     int len;                 /* ALL */
     int promote;
@@ -69,7 +70,10 @@ extern uint16_t compiler_offset;
 #define CPU_ADDR_MODE_UNKNOWN_X  0x81
 #define CPU_ADDR_MODE_UNKNOWN_Y  0x82
 
-extern uint16_t compiler_offset;     /* current compiler offset */
+extern uint16_t compiler_offset;     /* compiler.c: current compiler offset */
+extern char *parser_file;            /* lexer.l */
+extern int parser_line;              /* lexer.l */
+
 extern void add_opdata(opdata_t*);
 
 extern value_t *y_lookup_symbol(char *label);
@@ -79,8 +83,9 @@ extern int y_value_is_byte(value_t *value);
 extern void value_promote(value_t *value, int line);
 extern void value_demote(value_t *value, int line);
 extern int y_can_evaluate(value_t *value);
+extern int l_parse_file(char *file);
 
 #define OPCODE_NOTFOUND 0x0100
-extern uint16_t opcode_lookup(opdata_t *op, int line, int fatal);
+extern uint16_t opcode_lookup(opdata_t *op, int fatal);
 
 #endif /* _COMPILER_H_ */
