@@ -156,7 +156,7 @@ a                              { return(AREG); }
 
 &                              { yylval.arithop = BAND; return(BAND); }
 \|                             { yylval.arithop = BOR; return(BOR); }
-'^'                            { yylval.arithop = BXOR; return(BXOR); }
+\^                             { yylval.arithop = BXOR; return(BXOR); }
 ~                              { yylval.arithop = BNOT; return(BNOT); }
 \<<                            { yylval.arithop = BSL; return(BSL); }
 >>                             { yylval.arithop = BSR; return(BSR); }
@@ -187,6 +187,8 @@ equ                            { return(EQ); }
                                                         } else { yylval.word = atoi(yytext); return (WORD); }}
 
 \'.\'                          { yylval.byte = yytext[1]; return(BYTE); }
+\".\"                          { yylval.byte = yytext[1]; return(BYTE); }
+
 {qstring}                      { yylval.string = (char*)&(strdup(yytext)[1]);
                                  yylval.string[strlen(yylval.string) - 1] = '\0';
                                  return(STRING); }
