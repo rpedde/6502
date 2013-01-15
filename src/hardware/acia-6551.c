@@ -251,7 +251,7 @@ uint8_t uart_memop(hw_reg_t *hw, uint16_t addr, uint8_t memop, uint8_t data) {
             if(state->head_buffer_pos == state->tail_buffer_pos) {
                 /* nothing in the buffer */
                 retval = 0;
-                fprintf(stderr, "read on empty fifo\n");
+                /* fprintf(stderr, "read on empty fifo\n"); */
             } else {
                 retval = state->buffer[state->tail_buffer_pos];
                 state->tail_buffer_pos = (state->tail_buffer_pos + 1) % UART_MAX_BUFFER;
@@ -262,6 +262,7 @@ uint8_t uart_memop(hw_reg_t *hw, uint16_t addr, uint8_t memop, uint8_t data) {
                 }
             }
             unlock_state(state);
+            return retval;
         } else {
             write(state->pty, &data, 1);
         }
