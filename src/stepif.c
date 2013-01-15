@@ -313,6 +313,7 @@ void process_command(char *cmd) {
     int token;
     unsigned int temp;
     uint16_t old_ip = stepif_state.ip;
+    static stall_count = 0;
 
     memset((void*)&command, 0, sizeof(command));
     memset((void*)&response, 0, sizeof(response));
@@ -439,8 +440,13 @@ void process_command(char *cmd) {
         memcpy((void*)&stepif_state, (void*)data, sizeof(cpu_t));
 
         if ((stepif_state.ip == old_ip) && (stepif_running)) {
-            stepif_running = 0;
-            tui_putstring(pcommand, "Processor stalled\n");
+            stall_count++;
+            if (stall_count > 10) {
+                stepif_running = 0;
+                tui_putstring(pcommand, "Processor stalled\n");
+            }
+        } else {
+            stall_count = 0;
         }
 
         if ((stepif_follow_on_run) || (!stepif_running)) {
