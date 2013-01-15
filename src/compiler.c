@@ -167,6 +167,20 @@ void pass2(void) {
                 exit(EXIT_FAILURE);
             }
             pcurrent->data->value = operand;
+
+            if(pcurrent->data->forced_type == Y_TYPE_WORD) {
+                value_promote(operand);
+            } else if (pcurrent->data->forced_type == Y_TYPE_BYTE) {
+                if(!y_value_is_byte(operand)) {
+                    PFATAL("byte literal value is not a byte");
+                    exit(EXIT_FAILURE);
+                }
+                value_demote(operand);
+            } else {
+                /* should not happen */
+                PFATAL("bad forced type");
+                exit(EXIT_FAILURE);
+            }
         }
 
         if (pcurrent->data->type == TYPE_INSTRUCTION) {
@@ -193,13 +207,13 @@ void pass2(void) {
                     PERROR("Addressing mode requires BYTE, not WORD");
                     exit(EXIT_FAILURE);
                 }
-                value_demote(operand, pcurrent->data->line);
+                value_demote(operand);
 
                 break;
 
             case CPU_ADDR_MODE_RELATIVE:
                 eaddr = pcurrent->data->offset + 2;
-                value_promote(operand, pcurrent->data->line);
+                value_promote(operand);
 
                 /* I don't think it's valid to put a BYTE value
                  * directly in a relative branch, so we won't
@@ -229,7 +243,7 @@ void pass2(void) {
             case CPU_ADDR_MODE_ABSOLUTE_X:
             case CPU_ADDR_MODE_ABSOLUTE_Y:
             case CPU_ADDR_MODE_INDIRECT:
-                value_promote(operand, pcurrent->data->line);
+                value_promote(operand);
                 break;
 
             default:

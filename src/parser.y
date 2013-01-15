@@ -53,6 +53,7 @@ void y_add_bytesym(char *label, uint8_t byte);
 void y_add_byte(uint8_t byte);
 void y_add_word(uint16_t word);
 void y_add_nval(value_t *value);
+void y_add_nval_typed(value_t *value, int type);
 void y_add_string(char *string);
 value_t *y_create_arith(value_t *left, value_t *right, int operator);
 value_t *y_evaluate_val(value_t *value, int line, uint16_t addr);
@@ -173,8 +174,6 @@ void y_dump_value(value_t *value);
 %token ORG
 
 %type <nval> expression
-%type <nval> wordlvalue
-%type <nval> bytelvalue
 %type <arithop> math_operator
 %type <arithop> bool_operator
 %type <arithop> binary_operator
@@ -213,8 +212,8 @@ line: EOL { last_line_offset = compiler_offset; }
 LINE: MUL '=' expression { y_add_offset($3); }
 | ORG expression { y_add_offset($2); }
 | LABEL { y_add_wordsym($1, compiler_offset); }
-| LABEL EQ wordlvalue { y_add_symtable($1, $3); }
-| LABEL '=' wordlvalue { y_add_symtable($1, $3); }
+| LABEL EQ expression { y_add_symtable($1, $3); }
+| LABEL '=' expression { y_add_symtable($1, $3); }
 ;
 
 /* lines that can have an optional label */
@@ -368,23 +367,14 @@ unary_operator: BNOT { $$ = $1; }
 | HIB { $$ = $1; }
 ;
 
-wordlvalue: WORD { $$ = y_new_nval(Y_TYPE_WORD, $1, NULL); }
-| LABEL { $$ = y_new_nval(Y_TYPE_LABEL, 0, $1); }
-| '*' { $$ = y_new_nval(Y_TYPE_LABEL, 0, "*"); }
-;
-
-/* We'll typecheck these on pass 2 */
-bytelvalue: BYTE { $$ = y_new_nval(Y_TYPE_BYTE, $1, NULL); }
-;
-
-bytestring: bytelvalue { y_add_nval($1); }
+bytestring: expression { y_add_nval_typed($1, Y_TYPE_BYTE); }
 | STRING { y_add_string($1); }
-| bytestring ',' bytelvalue { y_add_nval($3); }
+| bytestring ',' expression { y_add_nval_typed($3, Y_TYPE_BYTE); }
 | bytestring ',' STRING { y_add_string($3); }
 ;
 
-wordstring: wordlvalue { y_add_nval($1); }
-| wordstring ',' wordlvalue { y_add_nval($3); }
+wordstring: expression { y_add_nval_typed($1, Y_TYPE_WORD); }
+| wordstring ',' expression { y_add_nval_typed($3, Y_TYPE_WORD); }
 ;
 
 
@@ -464,7 +454,7 @@ void y_do_dump_value(value_t *value, int depth) {
         break;
     case Y_TYPE_ARITH:
         PDEBUG("%*c Arith op $%04x", depth*2, ' ', value->word);
-        PDEBUG("%*c L:\n", depth*2, ' ');
+        PDEBUG("%*c L:", depth*2, ' ');
         y_do_dump_value(value->left, depth + 1);
         PDEBUG("%*c R:", depth*2, ' ');
         y_do_dump_value(value->right, depth + 1);
@@ -581,9 +571,8 @@ int y_value_is_byte(value_t *value) {
  * in-place promote a byte to a word
  *
  * @param value item to promote
- * @param line copilter line number for error message (unused, for symmetry)
  */
-void value_promote(value_t *value, int line) {
+void value_promote(value_t *value) {
     uint16_t new_value;
 
     if(value->type == Y_TYPE_BYTE) {
@@ -599,13 +588,12 @@ void value_promote(value_t *value, int line) {
  * in-place demote a word to a byte
  *
  * @param value item to demote
- * @param line compiler line number for error message
  */
-void value_demote(value_t *value, int line) {
+void value_demote(value_t *value) {
     if(value->type == Y_TYPE_WORD) {
         if(value->word > 255) {
-            FATAL("Line %d: Cannot demote word to byte",
-                  line, value->word);
+            PFATAL("cannot demote word to byte");
+            exit(EXIT_FAILURE);
         }
         value->byte = value->word;
         value->type = Y_TYPE_BYTE;
@@ -702,8 +690,8 @@ value_t *y_evaluate_val(value_t *value, int line, uint16_t addr) {
         retval = (value_t*)error_malloc(sizeof(value_t));
 
         if((left && right) && ((left->type == Y_TYPE_WORD) || (right->type == Y_TYPE_WORD))) {
-            value_promote(left, line);
-            value_promote(right, line);
+            value_promote(left);
+            value_promote(right);
         }
 
         if(left->type == Y_TYPE_WORD)
@@ -909,7 +897,7 @@ void y_add_word(uint16_t word) {
     add_opdata(pvalue);
 }
 
-void y_add_nval(value_t *value) {
+void y_add_nval_typed(value_t *value, int type) {
     opdata_t *pvalue;
 
     pvalue = (opdata_t *)malloc(sizeof(opdata_t));
@@ -919,20 +907,18 @@ void y_add_nval(value_t *value) {
     }
 
     memset(pvalue,0,sizeof(opdata_t));
+
     pvalue->type = TYPE_DATA;
     pvalue->value = value;
-    switch(value->type) {
+    pvalue->forced_type = type;
+
+    switch(type) {
     case Y_TYPE_BYTE:
         pvalue->len = 1;
         break;
     case Y_TYPE_WORD:
-    case Y_TYPE_LABEL:
         pvalue->len = 2;
         break;
-    default:
-        fprintf(stderr, "line %d: don't know type of arith expression",
-            parser_line);
-        exit(EXIT_FAILURE);
     }
 
     pvalue->line = parser_line;
@@ -941,6 +927,21 @@ void y_add_nval(value_t *value) {
     pvalue->offset = compiler_offset;
     compiler_offset += pvalue->len;
     add_opdata(pvalue);
+}
+
+void y_add_nval(value_t *value) {
+    switch(value->type) {
+    case Y_TYPE_BYTE:
+        y_add_nval_typed(value, Y_TYPE_BYTE);
+        break;
+    case Y_TYPE_WORD:
+    case Y_TYPE_LABEL:   /* is this right?!?!? */
+        y_add_nval_typed(value, Y_TYPE_WORD);
+        break;
+    default:
+        PFATAL("don't know type of arith expression");
+        exit(EXIT_FAILURE);
+    }
 }
 
 /*
@@ -956,7 +957,7 @@ void y_add_offset(value_t *value) {
     }
 
     concrete_value = y_evaluate_val(value, parser_line, compiler_offset);
-    value_promote(concrete_value, parser_line);
+    value_promote(concrete_value);
 
     PDEBUG("Adding new origin '%04x'", concrete_value->word);
     compiler_offset = concrete_value->word;
@@ -1039,7 +1040,7 @@ void y_add_opdata(uint8_t opcode_family, uint8_t addressing_mode,
      * label is not yet known, but will be zp.
      */
 
-    PDEBUG("adding opdata (%s)\n",
+    PDEBUG("adding opdata (%s)",
            cpu_opcode_mnemonics[opcode_family]);
 
 

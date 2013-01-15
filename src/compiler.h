@@ -47,11 +47,9 @@ typedef struct opdata_t_struct {
     uint8_t opcode;          /* INSTRUCTION */
     uint8_t addressing_mode; /* INSTRUCTION */
     value_t *value;          /* INSTRUCTION */
-    char *file;
-    int needs_fixup;         /* INSTRUCTION */ /* ?? */
     int len;                 /* ALL */
-    int promote;
-    int demote;
+    char *file;
+    int forced_type;         /* checked in pass2 */
     int offset;
     int line;
 } opdata_t;
@@ -80,8 +78,8 @@ extern value_t *y_lookup_symbol(char *label);
 extern value_t *y_evaluate_val(value_t *value, int line, uint16_t addr);
 extern void y_add_symtable(char *label, value_t *value);
 extern int y_value_is_byte(value_t *value);
-extern void value_promote(value_t *value, int line);
-extern void value_demote(value_t *value, int line);
+extern void value_promote(value_t *value);
+extern void value_demote(value_t *value);
 extern int y_can_evaluate(value_t *value);
 extern int l_parse_file(char *file);
 

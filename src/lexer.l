@@ -222,7 +222,7 @@ void l_include_file(char *filename) {
     if(fname[strlen(fname) - 1] == '\"')
         fname[strlen(fname) - 1] = 0;
 
-    PINFO("including %s", fname);
+    PDEBUG("including %s", fname);
 
     l_include_stack[include_depth].yy_buffer_state = YY_CURRENT_BUFFER;
 
