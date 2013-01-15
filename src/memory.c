@@ -102,7 +102,7 @@ uint8_t memory_read(uint16_t addr) {
         current = current->pnext;
     }
 
-    EPRINTF(DBG_ERROR, "No readable memory at addr %x\n", addr);
+    ERROR("No readable memory at addr %x\n", addr);
     return 0;
 }
 
@@ -124,18 +124,18 @@ void memory_write(uint16_t addr, uint8_t value) {
 
         current = current->pnext;
     }
-    EPRINTF(DBG_ERROR, "No writable memory at addr %x\n", addr);
+    ERROR("No writable memory at addr %x\n", addr);
 }
 
 int memory_load(const char *module, hw_config_t *config) {
     memory_list_t *modentry = NULL;
     module_list_t *pmodule = NULL;
 
-    DPRINTF(DBG_DEBUG, "Loading module %s\n", module);
+    DEBUG("Loading module %s\n", module);
 
     modentry = malloc(sizeof(memory_list_t));
     if(!modentry) {
-        EPRINTF(DBG_FATAL, "malloc");
+        ERROR("malloc: %s", strerror(errno));
         exit(1);
     }
 
@@ -145,15 +145,15 @@ int memory_load(const char *module, hw_config_t *config) {
     modentry->hw_reg = pmodule->init(config);
 
     if(modentry->hw_reg == NULL) {
-        EPRINTF(DBG_FATAL, "Module %s init failed", module);
+        FATAL("Module %s init failed", module);
         exit(1);
     }
 
-    DPRINTF(DBG_DEBUG, "Loaded module at 0x%x - 0x%x.  Read: %d, Write: %d\n",
-            modentry->hw_reg->remap[0].mem_start,
-            modentry->hw_reg->remap[0].mem_end,
-            modentry->hw_reg->remap[0].readable,
-            modentry->hw_reg->remap[0].writable);
+    DEBUG("Loaded module at 0x%x - 0x%x.  Read: %d, Write: %d\n",
+          modentry->hw_reg->remap[0].mem_start,
+          modentry->hw_reg->remap[0].mem_end,
+          modentry->hw_reg->remap[0].readable,
+          modentry->hw_reg->remap[0].writable);
 
     modentry->pnext = memory_list.pnext;
     memory_list.pnext = modentry;
