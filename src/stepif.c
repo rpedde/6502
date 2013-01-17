@@ -313,7 +313,7 @@ void process_command(char *cmd) {
     int token;
     unsigned int temp;
     uint16_t old_ip = stepif_state.ip;
-    static stall_count = 0;
+    static int stall_count = 0;
 
     memset((void*)&command, 0, sizeof(command));
     memset((void*)&response, 0, sizeof(response));
