@@ -31,7 +31,6 @@
 #define Y_TYPE_LABEL 2
 #define Y_TYPE_ARITH 3
 
-
 typedef struct value_t_struct {
     int type;
     uint8_t byte; /* this could be unioned */
@@ -73,6 +72,7 @@ extern uint16_t compiler_offset;
 extern uint16_t compiler_offset;     /* compiler.c: current compiler offset */
 extern char *parser_file;            /* lexer.l */
 extern int parser_line;              /* lexer.l */
+extern int l_parse_error;
 
 extern void add_opdata(opdata_t*);
 
@@ -84,6 +84,7 @@ extern void value_promote(value_t *value);
 extern void value_demote(value_t *value);
 extern int y_can_evaluate(value_t *value);
 extern int l_parse_file(char *file);
+extern void yyerror(char *format, ...);
 
 #define OPCODE_NOTFOUND 0x0100
 extern uint16_t opcode_lookup(opdata_t *op, int fatal);

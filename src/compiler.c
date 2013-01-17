@@ -192,11 +192,10 @@ void pass2(void) {
 
             if ((psym->value->type != Y_TYPE_BYTE) &&
                 (psym->value->type != Y_TYPE_WORD)) {
-                PERROR("cannot resolve symbol: %s", psym->label);
+                YERROR("cannot resolve symbol: %s", psym->label);
             }
             psym = psym->next;
         }
-        exit(EXIT_FAILURE);
     }
 
     while(pcurrent) {
@@ -207,8 +206,8 @@ void pass2(void) {
             /* force expression of values */
             operand = y_evaluate_val(pcurrent->data->value, pcurrent->data->line, pcurrent->data->offset);
             if(!operand) {
-                PFATAL("unresolvable symbol");
-                exit(EXIT_FAILURE);
+                YERROR("unresolvable symbol");
+                break;
             }
             pcurrent->data->value = operand;
 
@@ -216,8 +215,8 @@ void pass2(void) {
                 value_promote(operand);
             } else if (pcurrent->data->forced_type == Y_TYPE_BYTE) {
                 if(!y_value_is_byte(operand)) {
-                    PFATAL("byte literal value is not a byte");
-                    exit(EXIT_FAILURE);
+                    YERROR("byte literal value is not a byte");
+                    break;
                 }
                 value_demote(operand);
             } else {
@@ -231,8 +230,8 @@ void pass2(void) {
             if(pcurrent->data->value) {
                 operand = y_evaluate_val(pcurrent->data->value, pcurrent->data->line, pcurrent->data->offset);
                 if(!operand) {
-                    PFATAL("unresolvable symbol");
-                    exit(EXIT_FAILURE);
+                    YERROR("unresolvable symbol");
+                    break;
                 }
                 pcurrent->data->value = operand;
             }
@@ -248,8 +247,8 @@ void pass2(void) {
             case CPU_ADDR_MODE_IND_X:
             case CPU_ADDR_MODE_IND_Y:
                 if(!y_value_is_byte(operand)) {
-                    PERROR("Addressing mode requires BYTE, not WORD");
-                    exit(EXIT_FAILURE);
+                    YERROR("Addressing mode requires BYTE, not WORD");
+                    break;
                 }
                 value_demote(operand);
 
@@ -268,8 +267,8 @@ void pass2(void) {
                 offset = taddr - eaddr;
 
                 if(offset < -128 || offset > 127) {
-                    PERROR("Branch out of range");
-                    exit(EXIT_FAILURE);
+                    YERROR("Branch out of range");
+                    break;
                 }
 
                 operand->type = Y_TYPE_BYTE;
@@ -655,14 +654,18 @@ int main(int argc, char *argv[]) {
     last_line_offset = compiler_offset;
 
     INFO("Pass 1:  Parsing.");
-    if(!l_parse_file(argv[optind])) {
-        ERROR("Aborting");
-        exit(EXIT_FAILURE);
-    }
+    l_parse_file(argv[optind]);
 
     compiler_offset = 0x8000;
 
     pass2();
+
+
+    if(l_parse_error) {
+        ERROR("Error... suppressing output");
+        exit(EXIT_FAILURE);
+    }
+
 
     /* default: map and split bin */
     write_output(basepath, do_map, do_bin, do_hex, do_split);

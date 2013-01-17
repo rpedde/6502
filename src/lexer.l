@@ -21,6 +21,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -35,7 +36,6 @@
 #define MAX_INCLUDE_DEPTH 10
 
 extern int yydebug;
-extern int parse_failure;
 
 char *parser_file;
 int parser_line = 1;
@@ -50,7 +50,7 @@ int include_depth=0;
 
 include_stack_t l_include_stack[MAX_INCLUDE_DEPTH];
 
-int l_parse_failure;
+int l_parse_error;
 unsigned int tempint;
 
 void l_include_file(char *filename);
@@ -198,10 +198,19 @@ equ                            { return(EQ); }
 
 %%
 
-void yyerror(char *msg) {
-    l_parse_failure = 1;
-    PERROR("%s", msg);
+void yyerror(char *format, ...) {
+    va_list args;
+
+    fprintf(stderr, "%s:%d: error: ", parser_file, parser_line);
+
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    va_end(args);
+
+    fprintf(stderr, "\n");
+    l_parse_error = 1;
 }
+
 
 /**
  * include a file and switch back out of incl-mode
@@ -288,7 +297,7 @@ int l_parse_file(char *file) {
     result = yyparse(NULL);
     fclose(fin);
 
-    return (!l_parse_failure);
+    return (!l_parse_error);
 }
 
 int l_eof(void) {

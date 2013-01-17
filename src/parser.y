@@ -35,9 +35,8 @@
 #include "compiler.h"
 #include "debug.h"
 
-#define YYERROR_VERBOSE 1
+#define YERROR_VERBOSE 1
 
-extern void yyerror(char *msg);
 extern int yylex (void);
 
 uint16_t last_line_offset;
@@ -592,8 +591,8 @@ void value_promote(value_t *value) {
 void value_demote(value_t *value) {
     if(value->type == Y_TYPE_WORD) {
         if(value->word > 255) {
-            PFATAL("cannot demote word to byte");
-            exit(EXIT_FAILURE);
+            YERROR("cannot demote word to byte");
+            return;
         }
         value->byte = value->word;
         value->type = Y_TYPE_BYTE;
@@ -849,11 +848,7 @@ void y_add_byte(uint8_t byte) {
 
     value = y_new_nval(Y_TYPE_BYTE, byte, NULL);
 
-    pvalue = (opdata_t *)malloc(sizeof(opdata_t));
-    if(!pvalue) {
-        perror("malloc");
-        exit(EXIT_FAILURE);
-    }
+    pvalue = (opdata_t *)error_malloc(sizeof(opdata_t));
 
     memset(pvalue,0,sizeof(opdata_t));
     pvalue->type = TYPE_DATA;
@@ -878,11 +873,7 @@ void y_add_word(uint16_t word) {
 
     value = y_new_nval(Y_TYPE_WORD, word, NULL);
 
-    pvalue = (opdata_t *)malloc(sizeof(opdata_t));
-    if(!pvalue) {
-        perror("malloc");
-        exit(EXIT_FAILURE);
-    }
+    pvalue = (opdata_t *)error_malloc(sizeof(opdata_t));
 
     memset(pvalue,0,sizeof(opdata_t));
     pvalue->type = TYPE_DATA;
@@ -900,11 +891,7 @@ void y_add_word(uint16_t word) {
 void y_add_nval_typed(value_t *value, int type) {
     opdata_t *pvalue;
 
-    pvalue = (opdata_t *)malloc(sizeof(opdata_t));
-    if(!pvalue) {
-        perror("malloc");
-        exit(EXIT_FAILURE);
-    }
+    pvalue = (opdata_t *)error_malloc(sizeof(opdata_t));
 
     memset(pvalue,0,sizeof(opdata_t));
 
@@ -952,8 +939,8 @@ void y_add_offset(value_t *value) {
     value_t *concrete_value;
 
     if(!y_can_evaluate(value)) {
-        PFATAL("cannot resolve offset.");
-        exit(EXIT_FAILURE);
+        YERROR("cannot resolve offset.");
+        return;
     }
 
     concrete_value = y_evaluate_val(value, parser_line, compiler_offset);
@@ -980,8 +967,8 @@ void y_add_symtable(char *label, value_t *value) {
     PDEBUG("Adding symbol '%s'", nlabel);
 
     if(y_lookup_symbol(nlabel)) {
-        PERROR("duplicate symbol: %s", nlabel);
-        exit(EXIT_FAILURE);
+        YERROR("duplicate symbol: %s", nlabel);
+        return;
     }
 
     pnew = (symtable_t*)error_malloc(sizeof(symtable_t));
@@ -1132,22 +1119,23 @@ void y_add_opdata(uint8_t opcode_family, uint8_t addressing_mode,
         break;
 
     default:
-        PFATAL("Bad addressing mode: %d", addressing_mode);
-        break;
+        YERROR("Bad addressing mode: %d", addressing_mode);
+        return;
+
     }
 
 
     if(!pnew->len) {
-        PFATAL("unknown opcode length");
-        exit(EXIT_FAILURE);
+        YERROR("unknown opcode length");
+        return;
     }
 
     opcode = opcode_lookup(pnew, 1);
     if(opcode == OPCODE_NOTFOUND) {
-        PFATAL("cannot resolve opcode for %s as %s",
+        YERROR("cannot resolve opcode for %s as %s",
               cpu_opcode_mnemonics[pnew->opcode_family],
               cpu_addressing_mode[pnew->addressing_mode]);
-        exit(EXIT_FAILURE);
+        return;
     }
 
     pnew->opcode = opcode_lookup(pnew, 1);
