@@ -9,6 +9,7 @@
 #include "libtui.h"
 #include "stepwise.h"
 #include "6502.h"
+#include "debuginfo.h"
 
 #define _INCLUDE_OPCODE_MAP
 #include "opcodes.h"
@@ -56,6 +57,7 @@ char xlat[256];
 #define TOK_BREAK       7
 #define TOK_RUN         8
 #define TOK_FOLLOW      9
+#define TOK_DI         10
 #define TOK_UNKNOWN   100
 #define TOK_AMBIGUOUS 101
 
@@ -70,6 +72,7 @@ char *tokens[] = {
     "break",
     "run",
     "follow",
+    "di",
     NULL
 };
 
@@ -303,6 +306,93 @@ void util_dispose_split(char **argv) {
     free(argv);
 }
 
+
+/**
+ * determine if a string is a valid opcode.
+ * @see fixup_line
+ *
+ * @param str string to test for opcodeness
+ */
+int is_opcode(char *str) {
+    opcode_info_t *p = cpu_opcode_info;
+    while(p->mnemonic) {
+        if(strcasecmp(p->mnemonic, str) == 0)
+            return 1;
+        p++;
+    }
+
+    return 0;
+}
+
+/**
+ * try to straighten out crazy formatting and tab
+ * stuff in source code.
+ *
+ * @param line data to fix.  will return a mallocd string,
+ * caller must free.
+ */
+int fixup_line(char **line) {
+    char *newline;
+    char *start;
+    char *token;
+
+    char *src, *dst;
+    int last_space = 0;
+
+    newline = (char*)malloc(strlen(*line) + 1);
+    if(!newline) {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+    memset(newline, 0, strlen(start) + 1);
+
+    src = dst = *line;
+
+    while(*src && (*src == ' ' || *src == '\t'))
+        src++;
+
+    while(*src) {
+        if(*src == '\t' || *src == ' ')
+            last_space = 1;
+        else if (*src == ';') {
+            *dst++ = 0;
+            break;
+        } else if (*src == '\n' || *src == '\r') {
+            /* nothing */
+        } else {
+            if(last_space) {
+                *dst++ = ' ';
+                last_space = 0;
+            }
+            *dst = *src;
+            dst++;
+        }
+        src++;
+    }
+    *dst = '\0';
+
+    start = *line;
+    token = strsep(&start, "\t ");
+    if(!token) {
+        *line = newline;
+        return 0;
+    }
+
+    if(is_opcode(token)) {
+        sprintf(newline, "               %s", token);
+    } else {
+        sprintf(newline, "%-14s", token);
+    }
+
+    while((token = strsep(&start, " ")) != NULL) {
+        strcat(newline, " ");
+        strcat(newline, token);
+    }
+
+    *line = newline;
+    return 1;
+}
+
 void process_command(char *cmd) {
     char **argv;
     int argc;
@@ -505,6 +595,16 @@ void process_command(char *cmd) {
                       stepif_follow_on_run ? "on" : "off");
         break;
 
+    case TOK_DI:
+        if (argc != 2) {
+            stepif_debug(D_ERROR, "Usage: di <filename>\n");
+            break;
+        }
+
+        debuginfo_load(argv[1]);
+        tui_putstring(pcommand, "Loaded.\n");
+        break;
+
     case TOK_AMBIGUOUS:
         tui_putstring(pcommand, "Ambiguous command\n");
         break;
@@ -578,6 +678,8 @@ void display_update(void) {
         uint16_t rel;
         int len;
 
+        char linebuffer[80];
+
         opcode_t *popcode;
 
         tui_setpos(pdisplay, 0, 1);
@@ -591,10 +693,12 @@ void display_update(void) {
                 continue;
             }
 
-            if(breakpoint_is_set(pos))
+            if(breakpoint_is_set(pos)) {
+                tui_setcolor(pdisplay, 1);
                 tui_putstring(pdisplay, " *");
-            else
+            } else {
                 tui_putstring(pdisplay, "  ");
+            }
 
             if(stepif_state.ip == pos)
                 tui_putstring(pdisplay, "=> ");
@@ -622,50 +726,64 @@ void display_update(void) {
 
             switch(popcode->addressing_mode) {
             case CPU_ADDR_MODE_IMPLICIT:
+                tui_putstring(pdisplay,"          ");
                 break;
             case CPU_ADDR_MODE_ACCUMULATOR:
-                tui_putstring(pdisplay,"A");
+                tui_putstring(pdisplay,"A         ");
                 break;
             case CPU_ADDR_MODE_IMMEDIATE:
-                tui_putstring(pdisplay, "#$%02x", b);
+                tui_putstring(pdisplay, "#$%02x      ", b);
                 break;
             case CPU_ADDR_MODE_RELATIVE:
-                tui_putstring(pdisplay, "$%02x", rel);
+                tui_putstring(pdisplay, "$%04x     ", rel);
                 break;
             case CPU_ADDR_MODE_ABSOLUTE:
-                tui_putstring(pdisplay, "$%04x", w);
+                tui_putstring(pdisplay, "$%04x     ", w);
                 break;
             case CPU_ADDR_MODE_ABSOLUTE_X:
-                tui_putstring(pdisplay, "$%04x,X", w);
+                tui_putstring(pdisplay, "$%04x,X   ", w);
                 break;
             case CPU_ADDR_MODE_ABSOLUTE_Y:
-                tui_putstring(pdisplay, "$%04x,Y", w);
+                tui_putstring(pdisplay, "$%04x,Y   ", w);
                 break;
             case CPU_ADDR_MODE_ZPAGE:
-                tui_putstring(pdisplay, "$%02x", b);
+                tui_putstring(pdisplay, "$%02x       ", b);
                 break;
             case CPU_ADDR_MODE_ZPAGE_X:
-                tui_putstring(pdisplay, "$%02x,X", b);
+                tui_putstring(pdisplay, "$%02x,X     ", b);
                 break;
             case CPU_ADDR_MODE_ZPAGE_Y:
-                tui_putstring(pdisplay, "$%02x,Y", b);
+                tui_putstring(pdisplay, "$%02x,Y     ", b);
                 break;
             case CPU_ADDR_MODE_INDIRECT:
-                tui_putstring(pdisplay, "($%04x)", w);
+                tui_putstring(pdisplay, "($%04x)   ", w);
                 break;
             case CPU_ADDR_MODE_IND_X:
-                tui_putstring(pdisplay, "($%02x,X)", b);
+                tui_putstring(pdisplay, "($%02x,X)   ", b);
                 break;
             case CPU_ADDR_MODE_IND_Y:
-                tui_putstring(pdisplay, "($%02x),Y", b);
+                tui_putstring(pdisplay, "($%02x),Y   ", b);
                 break;
             }
 
-            pos += len;
             if(popcode->opcode_undocumented)
-                tui_putstring(pdisplay, " (!!)");
+                tui_putstring(pdisplay, " ?? ");
+            else
+                tui_putstring(pdisplay, "    ");
+
+            if(debuginfo_getline(pos, linebuffer, sizeof(linebuffer))) {
+                tui_setcolor(pdisplay, 6);
+                char *linedata = linebuffer;
+                fixup_line(&linedata);
+                tui_putstring(pdisplay, linedata);
+                free(linedata);
+                tui_resetcolor(pdisplay);
+            }
+
+            pos += len;
             tui_putstring(pdisplay, "\n");
             line++;
+            tui_resetcolor(pdisplay);
         }
 
 
@@ -718,6 +836,8 @@ int main(int argc, char *argv[]) {
     char *fifo_path;
     int pos;
     int step_char;
+
+    debuginfo_init();
 
     breakpoint_list.pnext = NULL;
     stepif_display_mode = DISPLAY_MODE_DUMP;

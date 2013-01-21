@@ -326,7 +326,7 @@ FILE *make_fh(char *basename, char *extension, int binary) {
 
 
 void write_output(char *basename, int write_map, int write_bin, int write_hex, int split_bin) {
-    FILE *map = NULL, *bin = NULL, *hex = NULL;
+    FILE *map = NULL, *bin = NULL, *hex = NULL, *dbg = NULL;
     opdata_list_t *pcurrent = list.next;
     int len;
     symtable_t *psym;
@@ -594,6 +594,28 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
             fprintf(hex, ":00000001FF\n");
             fclose(hex);
         }
+
+        dbg = make_fh(basename, "dbg", 1);
+        pcurrent = list.next;
+        current_offset = pcurrent->data->offset - 1;
+
+        while(pcurrent) {
+            uint16_t fsize;
+
+            if ((pcurrent->data) && (pcurrent->data->offset != current_offset)) {
+                char *fullpath;
+                fullpath = realpath(pcurrent->data->file, NULL);
+                fwrite(&pcurrent->data->offset, 1, sizeof(uint16_t), dbg);
+                fwrite(&pcurrent->data->line, 1, sizeof(uint32_t), dbg);
+                fsize = strlen(fullpath) + 1;
+                fwrite(&fsize, 1, sizeof(uint16_t), dbg);
+                fwrite(fullpath, 1, strlen(fullpath) + 1, dbg);
+                free(fullpath);
+                current_offset = pcurrent->data->offset;
+            }
+            pcurrent = pcurrent->next;
+        }
+        fclose(dbg);
     }
 }
 
@@ -651,7 +673,6 @@ int main(int argc, char *argv[]) {
         *suffix = 0;
 
     compiler_offset = 0x8000;
-    last_line_offset = compiler_offset;
 
     INFO("Pass 1:  Parsing.");
     l_parse_file(argv[optind]);
@@ -662,7 +683,7 @@ int main(int argc, char *argv[]) {
 
 
     if(l_parse_error) {
-        ERROR("Error... suppressing output");
+        ERROR("Assemble aborted.");
         exit(EXIT_FAILURE);
     }
 

@@ -41,7 +41,9 @@ extern void tui_window_callback(window_t *pwindow, void(*callback)(void));
 
 extern void tui_window_nodelay(window_t *pwindow);
 extern void tui_window_delay(window_t *pwindow);
-int tui_getch(window_t *pwindow);
-
+extern int tui_getch(window_t *pwindow);
+extern void tui_setcolor(window_t *pwindow, int colorpair);
+extern void tui_resetcolor(window_t *pwindow);
+extern void tui_cleareol(window_t *pwindow);
 
 #endif /* _LIBTUI_H_ */

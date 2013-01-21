@@ -79,8 +79,8 @@ qstring \"[^\"\n]*[\"\n]
 
 [\t ]+
 \r
-;.*\n                          { l_advance_line(); return(EOL); }
-\n                             { l_advance_line(); return(EOL); }
+;.*\n                          { return(EOL); }
+\n                             { return(EOL); }
 
 
 (include|#include|.include)    BEGIN(incl);
@@ -265,6 +265,7 @@ void l_include_error(void) {
 void l_advance_line(void) {
     l_include_stack[include_depth].line_no++;
     parser_line = l_include_stack[include_depth].line_no;
+    PDEBUG("Advanced line to %d", parser_line);
 }
 
 /**

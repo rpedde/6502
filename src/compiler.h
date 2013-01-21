@@ -49,8 +49,8 @@ typedef struct opdata_t_struct {
     int len;                 /* ALL */
     char *file;
     int forced_type;         /* checked in pass2 */
-    int offset;
-    int line;
+    uint16_t offset;
+    uint32_t line;
 } opdata_t;
 
 typedef struct symtable_t_struct {

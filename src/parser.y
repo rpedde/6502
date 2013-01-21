@@ -39,8 +39,6 @@
 
 extern int yylex (void);
 
-uint16_t last_line_offset;
-
 value_t *y_new_nval(int type, uint16_t nval, char *lval);
 void y_add_opdata(uint8_t,  uint8_t, struct value_t_struct *);
 void y_add_label(char *);
@@ -197,14 +195,15 @@ void y_dump_value(value_t *value);
 
 %%
 
-program: line {}
-| program line {}
+program: EOL { l_advance_line(); }
+| line EOL { l_advance_line(); }
+| program line EOL { l_advance_line(); }
+| program EOL { l_advance_line(); }
 ;
 
-line: EOL { last_line_offset = compiler_offset; }
-| LINE EOL { last_line_offset = compiler_offset; }
-| LABELLINE EOL { last_line_offset = compiler_offset; }
-| LABEL LABELLINE EOL { y_add_wordsym($1, last_line_offset); last_line_offset = compiler_offset; }
+line: LINE {}
+| LABELLINE {}
+| LABEL LABELLINE { y_add_wordsym($1, compiler_offset); }
 ;
 
 /* line that cannot be labeled */
@@ -857,7 +856,7 @@ void y_add_byte(uint8_t byte) {
     pvalue->offset = compiler_offset;
 
     pvalue->line = parser_line;
-    pvalue->file = parser_file;
+    pvalue->file = strdup(parser_file);
 
     compiler_offset += 1;
     add_opdata(pvalue);
@@ -882,7 +881,7 @@ void y_add_word(uint16_t word) {
     pvalue->offset = compiler_offset;
 
     pvalue->line = parser_line;
-    pvalue->file = parser_file;
+    pvalue->file = strdup(parser_file);
 
     compiler_offset += 2;
     add_opdata(pvalue);
@@ -909,7 +908,7 @@ void y_add_nval_typed(value_t *value, int type) {
     }
 
     pvalue->line = parser_line;
-    pvalue->file = parser_file;
+    pvalue->file = strdup(parser_file);
 
     pvalue->offset = compiler_offset;
     compiler_offset += pvalue->len;
@@ -1166,7 +1165,7 @@ void y_add_opdata(uint8_t opcode_family, uint8_t addressing_mode,
     }
 
     pnew->line = parser_line;
-    pnew->file = parser_file;
+    pnew->file = strdup(parser_file);
 
     pnew->offset = compiler_offset;
     compiler_offset += pnew->len;

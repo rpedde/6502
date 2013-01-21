@@ -25,6 +25,7 @@ static colorset_t tui_colorlist[] = {
     { 3, 3 },
     { 4, 4 },
     { 5, 5 },
+    { 6, 6 },
 };
 
 void tui_deinit(void);
@@ -43,6 +44,7 @@ window_t *tui_init(char *title, int statusbar) {
     init_pair(3, COLOR_BLACK, COLOR_WHITE);  /* black on white */
     init_pair(4, COLOR_WHITE, COLOR_BLUE);
     init_pair(5, COLOR_WHITE, COLOR_GREEN);
+    init_pair(6, COLOR_CYAN, COLOR_BLUE);
 
     tui_rootwindow = tui_makewindow(stdscr);
     tui_rootwindow->width = COLS;
@@ -68,6 +70,19 @@ void tui_getstring(window_t *pwindow, char *buffer, int len) {
 
 void tui_setpos(window_t *pwindow, int xpos, int ypos) {
     wmove(pwindow->pcwindow, ypos, xpos);
+}
+
+void tui_setcolor(window_t *pwindow, int colorpair) {
+    wattron(pwindow->pcwindow, COLOR_PAIR(colorpair));
+}
+
+void tui_resetcolor(window_t *pwindow) {
+    wattron(pwindow->pcwindow,
+            COLOR_PAIR(pwindow->windowpair));
+}
+
+void tui_cleareol(window_t *pwindow) {
+    wclrtoeol(pwindow->pcwindow);
 }
 
 void tui_inputwindow(window_t *pwindow) {
@@ -126,7 +141,6 @@ void tui_window_delay(window_t *pwindow) {
 int tui_getch(window_t *pwindow) {
     return wgetch(pwindow->pcwindow);
 }
-
 
 window_t *tui_window(int x, int y, int width, int height, int border,
                      char *title, int colorset) {

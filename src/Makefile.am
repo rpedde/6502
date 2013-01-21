@@ -8,7 +8,7 @@ emulator_SOURCES = 6502.c 6502.h debug.c debug.h emulator.c emulator.h hardware.
 
 compiler_SOURCES = compiler.c compiler.h opcodes.h parser.y lexer.l debug.c debug.h
 
-stepif_SOURCES = stepif.c stepif.h libtui.c libtui.h
+stepif_SOURCES = stepif.c stepif.h libtui.c libtui.h debuginfo.h debuginfo.c redblack.c redblack.h
 stepif_LDFLAGS = $(libcurses_LIBS)
 
 SUBDIRS = hardware

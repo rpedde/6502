@@ -212,7 +212,8 @@ opcode_info_t cpu_opcode_info[] = {
     { "txs", 0, 0, 1 },
     { "tya", 0, 0, 1 },
     { "xea", 0, 0, 0 },
-    { "xs7", 0, 0, 0 }
+    { "xs7", 0, 0, 0 },
+    { NULL,  0, 0, 0 },
 };
 
 char *cpu_opcode_mnemonics[] = {
@@ -234,7 +235,7 @@ char *cpu_opcode_mnemonics[] = {
  */
 
 opcode_t cpu_opcode_map[] = {
-    { CPU_OPCODE_BRK, 0, CPU_ADDR_MODE_IMPLICIT,    7, 0 }, /* 0x00 */
+    { CPU_OPCODE_BRK, 0, CPU_ADDR_MODE_IMMEDIATE,   7, 0 }, /* 0x00 */
     { CPU_OPCODE_ORA, 0, CPU_ADDR_MODE_IND_X,       6, 0 }, /* 0x01 */
     { CPU_OPCODE_JAM, 1, CPU_ADDR_MODE_IMPLICIT,    0, 0 }, /* 0x02 */
     { CPU_OPCODE_SLO, 1, CPU_ADDR_MODE_IND_X,       8, 0 }, /* 0x03 */
