@@ -43,7 +43,7 @@ window_t *tui_init(char *title, int statusbar) {
     init_pair(2, COLOR_BLACK, COLOR_YELLOW);
     init_pair(3, COLOR_BLACK, COLOR_WHITE);  /* black on white */
     init_pair(4, COLOR_WHITE, COLOR_BLUE);
-    init_pair(5, COLOR_WHITE, COLOR_GREEN);
+    init_pair(5, COLOR_BLACK, COLOR_GREEN);
     init_pair(6, COLOR_CYAN, COLOR_BLUE);
 
     tui_rootwindow = tui_makewindow(stdscr);

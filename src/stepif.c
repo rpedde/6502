@@ -16,6 +16,7 @@
 
 #define CMD_HEIGHT 10
 #define REGISTER_WIDTH 25
+#define REGISTER_HEIGHT 10
 
 #define DEFAULT_FIFO "/tmp/debug"
 
@@ -44,6 +45,7 @@ window_t *pscreen;
 window_t *pregisters;
 window_t *pcommand;
 window_t *pdisplay;
+window_t *pstack;
 
 char xlat[256];
 
@@ -306,7 +308,6 @@ void util_dispose_split(char **argv) {
     free(argv);
 }
 
-
 /**
  * determine if a string is a valid opcode.
  * @see fixup_line
@@ -393,6 +394,11 @@ int fixup_line(char **line) {
     return 1;
 }
 
+/**
+ * process a command from user input
+ *
+ * @param cmd entire command line
+ */
 void process_command(char *cmd) {
     char **argv;
     int argc;
@@ -515,6 +521,8 @@ void process_command(char *cmd) {
             tui_putstring(pcommand, "Error setting: %s\n",data);
         }
         tui_refresh(pregisters);
+        if(command.param1 == PARAM_SP)
+            tui_refresh(pstack);
 
         if((stepif_display_track) && (command.param1 == PARAM_IP) && (stepif_display_mode == DISPLAY_MODE_DISASM)) {
             stepif_display_addr = command.param2;
@@ -541,6 +549,7 @@ void process_command(char *cmd) {
 
         if ((stepif_follow_on_run) || (!stepif_running)) {
             tui_refresh(pregisters);
+            tui_refresh(pstack);
             if((stepif_display_mode == DISPLAY_MODE_DISASM) && (stepif_display_track)) {
                 stepif_display_addr = stepif_state.ip;
                 tui_refresh(pdisplay);
@@ -551,6 +560,7 @@ void process_command(char *cmd) {
             stepif_running = 0;
             tui_putstring(pcommand, "Breakpoint $%04x reached\n", stepif_state.ip);
             tui_refresh(pregisters);
+            tui_refresh(pstack);
             if((stepif_display_mode == DISPLAY_MODE_DISASM) && (stepif_display_track)) {
                 stepif_display_addr = stepif_state.ip;
                 tui_refresh(pdisplay);
@@ -623,6 +633,11 @@ void process_command(char *cmd) {
     util_dispose_split(argv);
 }
 
+/**
+ * display_update
+ *
+ * update the main display window
+ */
 void display_update(void) {
     int result;
     dbg_command_t command;
@@ -792,6 +807,10 @@ void display_update(void) {
     free(data);
 }
 
+/**
+ * update the register window
+ *
+ */
 void register_update(void) {
     int result;
     dbg_command_t command;
@@ -813,23 +832,93 @@ void register_update(void) {
     tui_putstring(pregisters, " %-4s $%02x\n", "X:", cpu_state->x);
     tui_putstring(pregisters, " %-4s $%02x    ", "Y:", cpu_state->y);
     tui_putstring(pregisters, " %-4s $%02x\n", "SP:", cpu_state->sp);
-    tui_putstring(pregisters, " %-4s $%04x\n\n", "IP:", cpu_state->ip);
-    tui_putstring(pregisters, " %s $%02x", "Flags:", cpu_state->p);
+    tui_putstring(pregisters, " %-4s $%04x  ", "IP:", cpu_state->ip);
+    tui_putstring(pregisters, " %-4s $%02x\n\n", "P:", cpu_state->p);
 
-/*     tui_putstring(pregisters, "  NVBDIZC\n"); */
-    tui_putstring(pregisters, "  (%c%c%c%c%c%c%c)\n",
-                  cpu_state->p & FLAG_N ? 'N' : 'n',
-                  cpu_state->p & FLAG_V ? 'V' : 'v',
-                  cpu_state->p & FLAG_B ? 'B' : 'b',
-                  cpu_state->p & FLAG_D ? 'D' : 'd',
-                  cpu_state->p & FLAG_I ? 'I' : 'i',
-                  cpu_state->p & FLAG_Z ? 'Z' : 'z',
-                  cpu_state->p & FLAG_C ? 'C' : 'c');
+    /* tui_putstring(pregisters, " %s $%02x", "Flags:", cpu_state->p); */
+
+    tui_putstring(pregisters, "  Flags: NV-BDIZC\n");
+    tui_putstring(pregisters, "         %c%c-%c%c%c%c%c\n",
+                  cpu_state->p & FLAG_N ? '1' : '0',
+                  cpu_state->p & FLAG_V ? '1' : '0',
+                  cpu_state->p & FLAG_B ? '1' : '0',
+                  cpu_state->p & FLAG_D ? '1' : '0',
+                  cpu_state->p & FLAG_I ? '1' : '0',
+                  cpu_state->p & FLAG_Z ? '1' : '0',
+                  cpu_state->p & FLAG_C ? '1' : '0');
 
     memcpy((void*)&stepif_state, (void*)cpu_state, sizeof(cpu_t));
     free(cpu_state);
 }
 
+
+/**
+ * update the stack window
+ *
+ */
+void stack_update(void) {
+    int result;
+    dbg_command_t command;
+    dbg_response_t response;
+    cpu_t *cpu_state;
+    uint8_t *data;
+
+    uint16_t startaddr;
+
+    memset((void*)&command, 0, sizeof(command));
+    memset((void*)&response, 0, sizeof(response));
+
+    command.cmd = CMD_REGS;
+
+    result = stepif_command(&command, NULL, &response, (uint8_t**)&cpu_state);
+    if(response.response_status == RESPONSE_ERROR)
+        return;
+
+    /* now, get the stack memory */
+    memset((void*)&command, 0, sizeof(command));
+    memset((void*)&response, 0, sizeof(response));
+
+    command.cmd = CMD_READMEM;
+    command.param1 = 0x0100;
+    command.param2 = 256;
+
+    result = stepif_command(&command, NULL, &response, &data);
+    if(response.response_status == RESPONSE_ERROR)
+        return;
+
+    tui_setpos(pregisters, 0, 1);
+    startaddr = 0x01ff;
+
+    if((255 - cpu_state->sp) > (pstack->height / 2)) {
+        startaddr = 0x100 + cpu_state->sp + ((pstack->height - 2) / 2);
+        if (startaddr < (0xff + (pstack->height - 2)))
+            startaddr = 0xff + (pstack->height - 2);
+
+        /* if((startaddr + (pstack->height / 2)) > pstack->height) */
+        /*     startaddr = 0x100 + pstack->height; */
+    }
+
+    tui_setpos(pstack,0,1);
+    for(uint16_t offset = 0; offset < (pstack->height - 2); offset++) {
+        uint16_t addr = startaddr - offset;
+
+        if((addr - 0x100) == cpu_state->sp)
+            tui_putstring(pstack, " => ");
+        else
+            tui_putstring(pstack, "    ");
+
+        tui_putstring(pstack, "$%04x: $%02x\n", addr,
+                      data[addr - 0x100]);
+
+    }
+
+    free(cpu_state);
+    free(data);
+}
+
+/**
+ * main
+ */
 int main(int argc, char *argv[]) {
     char buffer[40];
     char *fifo;
@@ -872,11 +961,13 @@ int main(int argc, char *argv[]) {
     free(fifo_path);
 
     pscreen = tui_init(NULL, 1);
-    pregisters = tui_window(pscreen->width - REGISTER_WIDTH, 0, REGISTER_WIDTH, pscreen->height - (CMD_HEIGHT + 1), 1, "Registers", COLORSET_GREEN);
+    pregisters = tui_window(pscreen->width - REGISTER_WIDTH, 0, REGISTER_WIDTH, REGISTER_HEIGHT, 1, "Registers", COLORSET_GREEN);
+    pstack = tui_window(pscreen->width - REGISTER_WIDTH, REGISTER_HEIGHT, REGISTER_WIDTH, pscreen->height - (CMD_HEIGHT + 1) - REGISTER_HEIGHT, 1, "Stack", COLORSET_GREEN);
     pcommand = tui_window(0, pscreen->height - (CMD_HEIGHT + 1), pscreen->width, CMD_HEIGHT, 1, "Command", COLORSET_DEFAULT);
     pdisplay = tui_window(0, 0, pscreen->width - REGISTER_WIDTH, pscreen->height - (CMD_HEIGHT+1), 1, "6502 Explorer", COLORSET_BLUE);
 
     tui_window_callback(pregisters, register_update);
+    tui_window_callback(pstack, stack_update);
     tui_window_callback(pdisplay, display_update);
 
     tui_inputwindow(pcommand);
