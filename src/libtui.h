@@ -33,7 +33,8 @@ extern window_t *tui_init(char *title, int statusbar);
 extern window_t *tui_window(int x, int y, int width, int height, int border, char *title, int colorset);
 extern void tui_inputwindow(window_t *pwindow);
 extern void tui_refresh(window_t *pwindow);
-extern void tui_getstring(window_t *pwindow, char *buffer, int len);
+extern void tui_getstring(window_t *pwindow, char *buffer, int len,
+                          void(*callback)(int));
 extern void tui_putstring(window_t *pwindow, char *format, ...);
 extern void tui_putva(window_t *pwindow, char *format, va_list args);
 extern void tui_setpos(window_t *pwindow, int xpos, int ypos);

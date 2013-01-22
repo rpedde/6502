@@ -64,8 +64,81 @@ window_t *tui_init(char *title, int statusbar) {
     return tui_rootwindow;
 }
 
-void tui_getstring(window_t *pwindow, char *buffer, int len) {
-    wgetnstr(pwindow->pcwindow, buffer, len);
+void tui_getstring(window_t *pwindow, char *buffer, int len,
+                   void(*callback)(int)) {
+    int inchar;
+    char *current = buffer;
+    int x, y;
+    int curx, cury;
+
+    getyx(pwindow->pcwindow, y, x);
+    memset(buffer, 0, len);
+
+    keypad(pwindow->pcwindow, 1);
+    tui_window_delay(pwindow);
+    noecho();
+
+    while(1) {
+        inchar = wgetch(pwindow->pcwindow);
+
+        switch(inchar) {
+        case 1:   /* ctrl-a */
+            tui_setpos(pwindow, x, y);
+            current = buffer;
+            break;
+        case 5:   /* ctrl-e */
+            tui_setpos(pwindow, x + strlen(buffer), y);
+            current = buffer + strlen(buffer);
+            break;
+        case 127:
+        case 8:   /* delete */
+            if (current > buffer) {
+                current--;
+                wechochar(pwindow->pcwindow, 8);
+                wechochar(pwindow->pcwindow, ' ');
+                wechochar(pwindow->pcwindow, 8);
+            }
+            break;
+        case 10:  /* enter/return */
+            tui_setpos(pwindow, x + strlen(buffer), y);
+            wechochar(pwindow->pcwindow, inchar);
+            return;
+        case 11:  /* ctrl-k */
+            tui_cleareol(pwindow);
+            memset(current, 0, len - (current - buffer));
+            break;
+
+        case 9: /* tab */
+        case KEY_F(1):
+        case KEY_F(2):
+        case KEY_F(3):
+        case KEY_F(4):
+        case KEY_F(5):
+        case KEY_F(6):
+        case KEY_F(7):
+        case KEY_F(8):
+            getyx(pwindow->pcwindow, cury, curx);
+
+            if(callback) {
+                callback(inchar);
+            }
+            tui_setpos(pwindow, curx, cury);
+            break;
+
+        default:
+            if((inchar >= 32) && (inchar <= 126)) { /* generally ascii */
+                *current++ = (char)inchar;
+                wechochar(pwindow->pcwindow, inchar);
+            } else {
+                getyx(pwindow->pcwindow, cury, curx);
+                tui_setpos(tui_statusbar, 0, 0);
+                tui_cleareol(tui_statusbar);
+                tui_putstring(tui_statusbar, "%d (x%02x)", inchar, inchar);
+                tui_setpos(pwindow, curx, cury);
+            }
+            break;
+        }
+    }
 }
 
 void tui_setpos(window_t *pwindow, int xpos, int ypos) {

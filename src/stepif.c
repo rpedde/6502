@@ -10,6 +10,7 @@
 #include "stepwise.h"
 #include "6502.h"
 #include "debuginfo.h"
+#include "redblack.h"
 
 #define _INCLUDE_OPCODE_MAP
 #include "opcodes.h"
@@ -27,12 +28,16 @@ int stepif_running = 0;
 
 #define DISPLAY_MODE_DUMP    0
 #define DISPLAY_MODE_DISASM  1
-#define DISPLAY_MODE_UNKNOWN 2
+#define DISPLAY_MODE_WATCH   2
 
 cpu_t stepif_state;
 int stepif_display_mode;
 int stepif_display_track;
-uint16_t stepif_display_addr;
+
+uint16_t stepif_disassemble_addr;
+uint16_t stepif_dump_addr;
+uint16_t stepif_watch_addr;
+
 int stepif_follow_on_run=1;
 
 #define D_FATAL 0
@@ -49,6 +54,9 @@ window_t *pstack;
 
 char xlat[256];
 
+struct rbtree *stepif_breakpoints = NULL;
+struct rbtree *stepif_watches = NULL;
+
 #define TOK_QUIT        0
 #define TOK_VERSION     1
 #define TOK_DUMP        2
@@ -60,6 +68,7 @@ char xlat[256];
 #define TOK_RUN         8
 #define TOK_FOLLOW      9
 #define TOK_DI         10
+#define TOK_WATCH      11
 #define TOK_UNKNOWN   100
 #define TOK_AMBIGUOUS 101
 
@@ -75,6 +84,7 @@ char *tokens[] = {
     "run",
     "follow",
     "di",
+    "watch",
     NULL
 };
 
@@ -84,6 +94,68 @@ typedef struct breakpoint_list_t {
 } breakpoint_list_t;
 
 breakpoint_list_t breakpoint_list;
+
+
+/**
+ * malloc and exit on error
+ */
+void *error_malloc(ssize_t size) {
+    void *retval;
+
+    retval = malloc(size);
+    if(!retval) {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+
+    return retval;
+}
+
+/**
+ * watch_add
+ *
+ * add a watch to the rb tree
+ */
+void watch_add(uint16_t addr) {
+    uint16_t *paddr = error_malloc(sizeof(uint16_t));
+    *paddr = addr;
+    rbsearch((void*)paddr, stepif_watches);
+}
+
+/**
+ * watch_remove
+ *
+ * delete a watch from the rb tree
+ */
+void watch_remove(uint16_t addr) {
+    rbdelete((void*)&addr, stepif_watches);
+}
+
+/**
+ * watch_set
+ */
+int watch_is_set(uint16_t addr) {
+    if(rbfind((void*)&addr, stepif_watches))
+        return 1;
+    return 0;
+}
+
+/**
+ * comparison function for redblack trees for address lookups
+ * (breakpoint and watches)
+ */
+int addr_compare(const void *a, const void *b, const void *config) {
+    uint16_t a1 = *(uint16_t *)a;
+    uint16_t a2 = *(uint16_t *)b;
+
+    if(a1 == a2)
+        return 0;
+
+    if(a1 < a2)
+        return -1;
+
+    return 1;
+}
 
 int breakpoint_add(uint16_t addr) {
     breakpoint_list_t *pnew;
@@ -162,6 +234,7 @@ void stepif_debug(int level, char *format, ...) {
     if(level > stepif_debug_threshold)
         return;
 
+    tui_putstring(pcommand, " ");
     va_start(args, format);
     tui_putva(pcommand, format, args);
     va_end(args);
@@ -442,7 +515,7 @@ void process_command(char *cmd) {
             break;
         }
 
-        stepif_display_addr = (uint16_t)temp;
+        stepif_dump_addr = (uint16_t)temp;
         stepif_display_mode = DISPLAY_MODE_DUMP;
         tui_refresh(pdisplay);
         break;
@@ -457,7 +530,7 @@ void process_command(char *cmd) {
             break;
         }
 
-        stepif_display_addr = (uint16_t)temp;
+        stepif_disassemble_addr = (uint16_t)temp;
         stepif_display_mode = DISPLAY_MODE_DISASM;
         tui_refresh(pdisplay);
         break;
@@ -478,9 +551,9 @@ void process_command(char *cmd) {
         command.extra_len = strlen(argv[1]) + 1;
 
         if((result = stepif_command(&command, (uint8_t*)argv[1], &response, &data)) == RESPONSE_OK) {
-            tui_putstring(pcommand, "Loaded\n",data);
+            tui_putstring(pcommand, " Loaded\n",data);
         } else {
-            tui_putstring(pcommand, "Error loading: %s\n",data);
+            tui_putstring(pcommand, " Error loading: %s\n",data);
         }
         break;
 
@@ -516,16 +589,16 @@ void process_command(char *cmd) {
         }
 
         if((result = stepif_command(&command, NULL, &response, &data)) == RESPONSE_OK) {
-            tui_putstring(pcommand, "Set\n",data);
+            tui_putstring(pcommand, " Set\n",data);
         } else {
-            tui_putstring(pcommand, "Error setting: %s\n",data);
+            tui_putstring(pcommand, " Error setting: %s\n",data);
         }
         tui_refresh(pregisters);
         if(command.param1 == PARAM_SP)
             tui_refresh(pstack);
 
         if((stepif_display_track) && (command.param1 == PARAM_IP) && (stepif_display_mode == DISPLAY_MODE_DISASM)) {
-            stepif_display_addr = command.param2;
+            stepif_disassemble_addr = command.param2;
             tui_refresh(pdisplay);
         }
         break;
@@ -541,7 +614,7 @@ void process_command(char *cmd) {
             stall_count++;
             if (stall_count > 10) {
                 stepif_running = 0;
-                tui_putstring(pcommand, "Processor stalled\n");
+                tui_putstring(pcommand, " Processor stalled\n");
             }
         } else {
             stall_count = 0;
@@ -551,18 +624,18 @@ void process_command(char *cmd) {
             tui_refresh(pregisters);
             tui_refresh(pstack);
             if((stepif_display_mode == DISPLAY_MODE_DISASM) && (stepif_display_track)) {
-                stepif_display_addr = stepif_state.ip;
+                stepif_disassemble_addr = stepif_state.ip;
                 tui_refresh(pdisplay);
             }
         }
 
         if (breakpoint_is_set(stepif_state.ip) && stepif_running) {
             stepif_running = 0;
-            tui_putstring(pcommand, "Breakpoint $%04x reached\n", stepif_state.ip);
+            tui_putstring(pcommand, " Breakpoint $%04x reached\n", stepif_state.ip);
             tui_refresh(pregisters);
             tui_refresh(pstack);
             if((stepif_display_mode == DISPLAY_MODE_DISASM) && (stepif_display_track)) {
-                stepif_display_addr = stepif_state.ip;
+                stepif_disassemble_addr = stepif_state.ip;
                 tui_refresh(pdisplay);
             }
         }
@@ -581,10 +654,10 @@ void process_command(char *cmd) {
 
         if (breakpoint_is_set((uint16_t)temp)) {
             breakpoint_remove((uint16_t)temp);
-            tui_putstring(pcommand, "Breakpoint unset\n");
+            tui_putstring(pcommand, " Breakpoint unset\n");
         } else {
             breakpoint_add((uint16_t)temp);
-            tui_putstring(pcommand, "Breakpoint set\n");
+            tui_putstring(pcommand, " Breakpoint set\n");
         }
 
         if((stepif_display_track) && (stepif_display_mode == DISPLAY_MODE_DISASM)) {
@@ -596,12 +669,12 @@ void process_command(char *cmd) {
         stepif_running = 1;
         /* turn off blocking getch so we can get chars when free-running */
         tui_window_nodelay(pcommand);
-        tui_putstring(pcommand, "Free-running: <ENTER> to stop\n");
+        tui_putstring(pcommand, " Free-running: <ENTER> to stop\n");
         break;
 
     case TOK_FOLLOW:
         stepif_follow_on_run = !stepif_follow_on_run;
-        tui_putstring(pcommand, "Follow mode is now %s\n",
+        tui_putstring(pcommand, " Follow mode is now %s\n",
                       stepif_follow_on_run ? "on" : "off");
         break;
 
@@ -612,16 +685,40 @@ void process_command(char *cmd) {
         }
 
         debuginfo_load(argv[1]);
-        tui_putstring(pcommand, "Loaded.\n");
+        tui_putstring(pcommand, " Loaded.\n");
+        break;
+
+    case TOK_WATCH:
+        if (argc != 2) {
+            stepif_debug(D_ERROR, "Usage: watch <addr>\n");
+            break;
+        }
+
+        if(sscanf(argv[1], "$%x", &temp) != 1) {
+            stepif_debug(D_ERROR, "Bad address format (should be $xxxx)\n");
+            break;
+        }
+
+        if (watch_is_set((uint16_t)temp)) {
+            watch_remove((uint16_t)temp);
+            tui_putstring(pcommand, " Watch unset\n");
+        } else {
+            watch_add((uint16_t)temp);
+            tui_putstring(pcommand, " Watch set\n");
+        }
+
+        if((stepif_display_mode == DISPLAY_MODE_DUMP) ||
+           (stepif_display_mode == DISPLAY_MODE_WATCH))
+            tui_refresh(pdisplay);
         break;
 
     case TOK_AMBIGUOUS:
-        tui_putstring(pcommand, "Ambiguous command\n");
+        tui_putstring(pcommand, " Ambiguous command\n");
         break;
 
     case TOK_UNKNOWN:
     default:
-        tui_putstring(pcommand, "Unknown command\n");
+        tui_putstring(pcommand, " Unknown command\n");
         break;
     }
 
@@ -633,25 +730,24 @@ void process_command(char *cmd) {
     util_dispose_split(argv);
 }
 
-/**
- * display_update
- *
- * update the main display window
- */
-void display_update(void) {
+
+void display_update_dump(void) {
     int result;
     dbg_command_t command;
     dbg_response_t response;
     uint8_t *data;
     uint8_t line;
     int pos;
-    static int last_display_type = DISPLAY_MODE_UNKNOWN;
+
+    if(stepif_display_mode != DISPLAY_MODE_DUMP)
+        return;
 
     memset((void*)&command, 0, sizeof(command));
     memset((void*)&response, 0, sizeof(response));
 
     command.cmd = CMD_READMEM;
-    command.param1 = stepif_display_addr;
+    command.param1 = stepif_dump_addr;
+
     if(16 * (pdisplay->height - 2) > 0xffff)
         command.param2 = 0xffff - command.param1;
     else
@@ -663,148 +759,255 @@ void display_update(void) {
     if(response.response_status == RESPONSE_ERROR)
         return;
 
-    if(stepif_display_mode == DISPLAY_MODE_DUMP) {
-        tui_setpos(pdisplay, 0, 1);
-        for(line = 0; line < (pdisplay->height - 2); line++) {
-            if(stepif_display_addr + (line * 16) <= 0xffff) {
-                tui_putstring(pdisplay, " %04x: ", stepif_display_addr + (line * 16));
-                for(pos = 0; pos < 16; pos++) {
-                    if((line*16 + pos)  < command.param2) {
-                        tui_putstring(pdisplay, "%02x %s", data[(line * 16) + pos], pos == 7 ? " " : "");
-                    } else {
-                        tui_putstring(pdisplay, "   %s", pos == 7 ? " " : "");
-                    }
-                }
-                tui_putstring(pdisplay, "  ");
-
-                for(pos = 0; pos < 16; pos++) {
-                    if((line*16 + pos)  < command.param2) {
-                        tui_putstring(pdisplay, "%c", xlat[data[(line * 16) + pos]]);
-                    }
+    tui_setpos(pdisplay, 0, 1);
+    for(line = 0; line < (pdisplay->height - 2); line++) {
+        if(stepif_dump_addr + (line * 16) <= 0xffff) {
+            tui_putstring(pdisplay, "     %04x: ", stepif_dump_addr + (line * 16));
+            for(pos = 0; pos < 16; pos++) {
+                if((line*16 + pos)  < command.param2) {
+                    if(watch_is_set(line * 16 + pos + stepif_dump_addr))
+                        tui_setcolor(pdisplay, 1);
+                    tui_putstring(pdisplay, "%02x", data[(line * 16) + pos]);
+                    tui_resetcolor(pdisplay);
+                    tui_putstring(pdisplay, " %s", pos == 7 ? " ":"");
+                } else {
+                    tui_putstring(pdisplay, "   %s", pos == 7 ? " " : "");
                 }
             }
+            tui_putstring(pdisplay, "  ");
 
-            tui_putstring(pdisplay,"\n");
-        }
-    } else if(stepif_display_mode == DISPLAY_MODE_DISASM) {
-        uint8_t opcode;
-        uint8_t b;
-        uint16_t w;
-        uint16_t rel;
-        int len;
+            for(pos = 0; pos < 16; pos++) {
+                if(watch_is_set(line * 16 + pos + stepif_dump_addr))
+                    tui_setcolor(pdisplay, 1);
 
-        char linebuffer[80];
-
-        opcode_t *popcode;
-
-        tui_setpos(pdisplay, 0, 1);
-        line = 0;
-        pos = stepif_display_addr;
-
-        while(line < (pdisplay->height - 2)) {
-            if(pos > 0xffff) {
-                tui_putstring(pdisplay, "\n");
-                line++;
-                continue;
-            }
-
-            if(breakpoint_is_set(pos)) {
-                tui_setcolor(pdisplay, 1);
-                tui_putstring(pdisplay, " *");
-            } else {
-                tui_putstring(pdisplay, "  ");
-            }
-
-            if(stepif_state.ip == pos)
-                tui_putstring(pdisplay, "=> ");
-            else
-                tui_putstring(pdisplay, "   ");
-
-            tui_putstring(pdisplay, "%04X: ", pos);
-            opcode = data[pos - stepif_display_addr];
-            b = data[(pos - stepif_display_addr) + 1];
-            w = data[(pos - stepif_display_addr) + 2] << 8 | b;
-
-            popcode = &cpu_opcode_map[opcode];
-            len = cpu_addressing_mode_length[popcode->addressing_mode];
-
-            rel = b & 0x80 ? pos - ((b + len -1) ^ 0xFF) : pos + b + len;
-
-            if(len == 1)
-                tui_putstring(pdisplay, "%02x         ", opcode);
-            else if (len == 2)
-                tui_putstring(pdisplay, "%02x %02x      ", opcode, b);
-            else
-                tui_putstring(pdisplay, "%02x %02x %02x   ", opcode, b, w >> 8);
-
-            tui_putstring(pdisplay, "%s ", cpu_opcode_mnemonics[popcode->opcode_family]);
-
-            switch(popcode->addressing_mode) {
-            case CPU_ADDR_MODE_IMPLICIT:
-                tui_putstring(pdisplay,"          ");
-                break;
-            case CPU_ADDR_MODE_ACCUMULATOR:
-                tui_putstring(pdisplay,"A         ");
-                break;
-            case CPU_ADDR_MODE_IMMEDIATE:
-                tui_putstring(pdisplay, "#$%02x      ", b);
-                break;
-            case CPU_ADDR_MODE_RELATIVE:
-                tui_putstring(pdisplay, "$%04x     ", rel);
-                break;
-            case CPU_ADDR_MODE_ABSOLUTE:
-                tui_putstring(pdisplay, "$%04x     ", w);
-                break;
-            case CPU_ADDR_MODE_ABSOLUTE_X:
-                tui_putstring(pdisplay, "$%04x,X   ", w);
-                break;
-            case CPU_ADDR_MODE_ABSOLUTE_Y:
-                tui_putstring(pdisplay, "$%04x,Y   ", w);
-                break;
-            case CPU_ADDR_MODE_ZPAGE:
-                tui_putstring(pdisplay, "$%02x       ", b);
-                break;
-            case CPU_ADDR_MODE_ZPAGE_X:
-                tui_putstring(pdisplay, "$%02x,X     ", b);
-                break;
-            case CPU_ADDR_MODE_ZPAGE_Y:
-                tui_putstring(pdisplay, "$%02x,Y     ", b);
-                break;
-            case CPU_ADDR_MODE_INDIRECT:
-                tui_putstring(pdisplay, "($%04x)   ", w);
-                break;
-            case CPU_ADDR_MODE_IND_X:
-                tui_putstring(pdisplay, "($%02x,X)   ", b);
-                break;
-            case CPU_ADDR_MODE_IND_Y:
-                tui_putstring(pdisplay, "($%02x),Y   ", b);
-                break;
-            }
-
-            if(popcode->opcode_undocumented)
-                tui_putstring(pdisplay, " ?? ");
-            else
-                tui_putstring(pdisplay, "    ");
-
-            if(debuginfo_getline(pos, linebuffer, sizeof(linebuffer))) {
-                tui_setcolor(pdisplay, 6);
-                char *linedata = linebuffer;
-                fixup_line(&linedata);
-                tui_putstring(pdisplay, linedata);
-                free(linedata);
+                if((line*16 + pos)  < command.param2) {
+                    tui_putstring(pdisplay, "%c", xlat[data[(line * 16) + pos]]);
                 tui_resetcolor(pdisplay);
+                }
             }
+        }
 
-            pos += len;
+        tui_putstring(pdisplay,"\n");
+    }
+
+    free(data);
+}
+
+
+/**
+ * update the watch display
+ */
+void display_update_watch(void) {
+    int result;
+    dbg_command_t command;
+    dbg_response_t response;
+    uint8_t *data;
+    uint8_t line;
+    uint16_t addr;
+    const void *addrp;
+    uint8_t value;
+
+    if(stepif_display_mode != DISPLAY_MODE_WATCH)
+        return;
+
+    addr = stepif_watch_addr;
+
+    line = 0;
+
+    tui_setpos(pdisplay, 0, 1);
+
+    while(line < pdisplay->height - 2) {
+        line++;
+        addrp = rblookup(RB_LUGTEQ, (void*)&addr, stepif_watches);
+        if(addrp) {
+            addr = *(uint16_t*)addrp;
+
+            /* this is terrible */
+
+            memset((void*)&command, 0, sizeof(command));
+            memset((void*)&response, 0, sizeof(response));
+
+            command.cmd = CMD_READMEM;
+            command.param1 = addr;
+            command.param2 = 1;
+
+            stepif_debug(D_DEBUG, "Asking for 1 byte at $%04x\n", addr);
+
+            result = stepif_command(&command, NULL, &response, &data);
+            if(response.response_status == RESPONSE_ERROR)
+                return;
+
+            value = data[0];
+            free(data);
+
+            tui_putstring(pdisplay, "     %04x: %02x\n", addr, value);
+            addr++;
+        } else {
+            tui_putstring(pdisplay, "\n");
+        }
+    }
+
+}
+
+
+/**
+ * display_update
+ *
+ * update the main display window
+ */
+void display_update_disasm(void) {
+    int result;
+    dbg_command_t command;
+    dbg_response_t response;
+    uint8_t *data;
+    uint8_t line;
+    int pos;
+
+    if(stepif_display_mode != DISPLAY_MODE_DISASM)
+        return;
+
+    memset((void*)&command, 0, sizeof(command));
+    memset((void*)&response, 0, sizeof(response));
+
+    command.cmd = CMD_READMEM;
+    command.param1 = stepif_disassemble_addr;
+
+    if(3 * (pdisplay->height - 2) > 0xffff)
+        command.param2 = 0xffff - command.param1;
+    else
+        command.param2 = 3 * (pdisplay->height - 2);
+
+    stepif_debug(D_DEBUG, "Asking for $%04x bytes\n", command.param2);
+
+    result = stepif_command(&command, NULL, &response, &data);
+    if(response.response_status == RESPONSE_ERROR)
+        return;
+
+    uint8_t opcode;
+    uint8_t b;
+    uint16_t w;
+    uint16_t rel;
+    int len;
+
+    char linebuffer[80];
+
+    opcode_t *popcode;
+
+    tui_setpos(pdisplay, 0, 1);
+    line = 0;
+    pos = stepif_disassemble_addr;
+
+    while(line < (pdisplay->height - 2)) {
+        if(pos > 0xffff) {
             tui_putstring(pdisplay, "\n");
             line++;
+            continue;
+        }
+
+        if(breakpoint_is_set(pos)) {
+            tui_setcolor(pdisplay, 1);
+            tui_putstring(pdisplay, " *");
+        } else {
+            tui_putstring(pdisplay, "  ");
+        }
+
+        if(stepif_state.ip == pos)
+            tui_putstring(pdisplay, "=> ");
+        else
+            tui_putstring(pdisplay, "   ");
+
+        tui_putstring(pdisplay, "%04X: ", pos);
+        opcode = data[pos - stepif_disassemble_addr];
+        b = data[(pos - stepif_disassemble_addr) + 1];
+        w = data[(pos - stepif_disassemble_addr) + 2] << 8 | b;
+
+        popcode = &cpu_opcode_map[opcode];
+        len = cpu_addressing_mode_length[popcode->addressing_mode];
+
+        rel = b & 0x80 ? pos - ((b + len -1) ^ 0xFF) : pos + b + len;
+
+        if(len == 1)
+            tui_putstring(pdisplay, "%02x         ", opcode);
+        else if (len == 2)
+            tui_putstring(pdisplay, "%02x %02x      ", opcode, b);
+        else
+            tui_putstring(pdisplay, "%02x %02x %02x   ", opcode, b, w >> 8);
+
+        tui_putstring(pdisplay, "%s ", cpu_opcode_mnemonics[popcode->opcode_family]);
+
+        switch(popcode->addressing_mode) {
+        case CPU_ADDR_MODE_IMPLICIT:
+            tui_putstring(pdisplay,"          ");
+            break;
+        case CPU_ADDR_MODE_ACCUMULATOR:
+            tui_putstring(pdisplay,"A         ");
+            break;
+        case CPU_ADDR_MODE_IMMEDIATE:
+            tui_putstring(pdisplay, "#$%02x      ", b);
+            break;
+        case CPU_ADDR_MODE_RELATIVE:
+            tui_putstring(pdisplay, "$%04x     ", rel);
+            break;
+        case CPU_ADDR_MODE_ABSOLUTE:
+            tui_putstring(pdisplay, "$%04x     ", w);
+            break;
+        case CPU_ADDR_MODE_ABSOLUTE_X:
+            tui_putstring(pdisplay, "$%04x,X   ", w);
+            break;
+        case CPU_ADDR_MODE_ABSOLUTE_Y:
+            tui_putstring(pdisplay, "$%04x,Y   ", w);
+            break;
+        case CPU_ADDR_MODE_ZPAGE:
+            tui_putstring(pdisplay, "$%02x       ", b);
+            break;
+        case CPU_ADDR_MODE_ZPAGE_X:
+            tui_putstring(pdisplay, "$%02x,X     ", b);
+            break;
+        case CPU_ADDR_MODE_ZPAGE_Y:
+            tui_putstring(pdisplay, "$%02x,Y     ", b);
+            break;
+        case CPU_ADDR_MODE_INDIRECT:
+            tui_putstring(pdisplay, "($%04x)   ", w);
+            break;
+        case CPU_ADDR_MODE_IND_X:
+            tui_putstring(pdisplay, "($%02x,X)   ", b);
+            break;
+        case CPU_ADDR_MODE_IND_Y:
+            tui_putstring(pdisplay, "($%02x),Y   ", b);
+            break;
+        }
+
+        if(popcode->opcode_undocumented)
+            tui_putstring(pdisplay, " ?? ");
+        else
+            tui_putstring(pdisplay, "    ");
+
+        if(debuginfo_getline(pos, linebuffer, sizeof(linebuffer))) {
+            tui_setcolor(pdisplay, 6);
+            char *linedata = linebuffer;
+            fixup_line(&linedata);
+            tui_putstring(pdisplay, linedata);
+            free(linedata);
             tui_resetcolor(pdisplay);
         }
 
-
+        pos += len;
+        tui_putstring(pdisplay, "\n");
+        line++;
+        tui_resetcolor(pdisplay);
     }
-    last_display_type = stepif_display_mode;
+
     free(data);
+}
+
+void display_update(void) {
+    if(stepif_display_mode == DISPLAY_MODE_DUMP) {
+        display_update_dump();
+    } else if(stepif_display_mode == DISPLAY_MODE_DISASM) {
+        display_update_disasm();
+    } else if(stepif_display_mode == DISPLAY_MODE_WATCH) {
+        display_update_watch();
+    }
 }
 
 /**
@@ -916,6 +1119,30 @@ void stack_update(void) {
     free(data);
 }
 
+void fkey_callback(int inchar) {
+    if(inchar == KEY_F(1))
+        stepif_display_mode = DISPLAY_MODE_DISASM;
+    else if(inchar == KEY_F(2))
+        stepif_display_mode = DISPLAY_MODE_DUMP;
+    else if(inchar == 9) {
+        switch(stepif_display_mode) {
+        case DISPLAY_MODE_DUMP:
+            stepif_display_mode = DISPLAY_MODE_DISASM;
+            break;
+        case DISPLAY_MODE_DISASM:
+            stepif_display_mode = DISPLAY_MODE_WATCH;
+            break;
+        case DISPLAY_MODE_WATCH:
+            stepif_display_mode = DISPLAY_MODE_DUMP;
+            break;
+        }
+    }
+
+    /* should really handle page down and page up too */
+
+    tui_refresh(pdisplay);
+}
+
 /**
  * main
  */
@@ -926,11 +1153,20 @@ int main(int argc, char *argv[]) {
     int pos;
     int step_char;
 
+    stepif_watches = rbinit(addr_compare, NULL);
+    if(!stepif_watches) {
+        fprintf(stderr, "error initializing watches\n");
+        exit(EXIT_FAILURE);
+    }
     debuginfo_init();
 
     breakpoint_list.pnext = NULL;
     stepif_display_mode = DISPLAY_MODE_DUMP;
-    stepif_display_addr = 0x8000;
+
+    stepif_disassemble_addr = 0x8000;
+    stepif_dump_addr = 0x8000;
+    stepif_watch_addr = 0;
+
     stepif_display_track = 1;
 
     memset((void*)xlat, '.', sizeof(xlat));
@@ -992,8 +1228,8 @@ int main(int argc, char *argv[]) {
         } else {
             /* make sure we are in delay mode */
             tui_window_delay(pcommand);
-            tui_putstring(pcommand, "> ");
-            tui_getstring(pcommand, buffer, sizeof(buffer));
+            tui_putstring(pcommand, " > ");
+            tui_getstring(pcommand, buffer, sizeof(buffer), fkey_callback);
             if(strcmp(buffer,"quit") == 0)
                 break;
 
