@@ -686,6 +686,9 @@ void process_command(char *cmd) {
 
         debuginfo_load(argv[1]);
         tui_putstring(pcommand, " Loaded.\n");
+
+        if(stepif_display_mode == DISPLAY_MODE_DISASM)
+            tui_refresh(pdisplay);
         break;
 
     case TOK_WATCH:
