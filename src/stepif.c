@@ -88,14 +88,6 @@ char *tokens[] = {
     NULL
 };
 
-typedef struct breakpoint_list_t {
-    uint16_t breakpoint;
-    struct breakpoint_list_t *pnext;
-} breakpoint_list_t;
-
-breakpoint_list_t breakpoint_list;
-
-
 /**
  * malloc and exit on error
  */
@@ -157,49 +149,19 @@ int addr_compare(const void *a, const void *b, const void *config) {
     return 1;
 }
 
-int breakpoint_add(uint16_t addr) {
-    breakpoint_list_t *pnew;
-
-    pnew = malloc(sizeof(breakpoint_list_t));
-    if(!pnew) {
-        perror("malloc");
-        exit(1);
-    }
-
-    pnew->breakpoint = addr;
-    pnew->pnext = breakpoint_list.pnext;
-    breakpoint_list.pnext = pnew;
-
-    return 1;
+void breakpoint_add(uint16_t addr) {
+    uint16_t *paddr = error_malloc(sizeof(uint16_t));
+    *paddr = addr;
+    rbsearch((void*)paddr, stepif_breakpoints);
 }
 
-int breakpoint_remove(uint16_t addr) {
-    breakpoint_list_t *last, *current;
-
-    last = &breakpoint_list;
-    current = last->pnext;
-
-    while(current) {
-        if (current->breakpoint == addr) {
-            last->pnext = current->pnext;
-            free(current);
-            return 1;
-        }
-        last = current;
-        current = current->pnext;
-    }
-
-    return 0;
+void breakpoint_remove(uint16_t addr) {
+    rbdelete((void*)&addr, stepif_breakpoints);
 }
 
 int breakpoint_is_set(uint16_t addr) {
-    breakpoint_list_t *current = breakpoint_list.pnext;
-
-    while(current) {
-        if (current->breakpoint == addr)
-            return 1;
-        current = current->pnext;
-    }
+    if(rbfind((void*)&addr, stepif_breakpoints))
+        return 1;
     return 0;
 }
 
@@ -1157,13 +1119,14 @@ int main(int argc, char *argv[]) {
     int step_char;
 
     stepif_watches = rbinit(addr_compare, NULL);
-    if(!stepif_watches) {
+    stepif_breakpoints = rbinit(addr_compare, NULL);
+
+    if((!stepif_watches) || (!stepif_breakpoints)) {
         fprintf(stderr, "error initializing watches\n");
         exit(EXIT_FAILURE);
     }
     debuginfo_init();
 
-    breakpoint_list.pnext = NULL;
     stepif_display_mode = DISPLAY_MODE_DUMP;
 
     stepif_disassemble_addr = 0x8000;
