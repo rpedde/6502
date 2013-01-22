@@ -87,7 +87,7 @@ qstring \"[^\"\n]*[\"\n]
 <incl>[\t ]+
 <incl>[^\t\n ]+                { l_include_file(yytext); }
 <incl>\n                       { l_include_error(); }
-<<EOF>>                        { if(l_eof()) yyterminate(); else return(EOL); }
+<<EOF>>                        { if(l_eof()) yyterminate(); }
 
 
 adc                            { yylval.opcode = CPU_OPCODE_ADC; return(TADC); }
@@ -248,8 +248,8 @@ void l_include_file(char *filename) {
     l_include_stack[include_depth].line_no = 1;
     l_include_stack[include_depth].file = fname;
 
-    parser_line = 1;
-    parser_file = fname;
+    parser_line = l_include_stack[include_depth].line_no;
+    parser_file = l_include_stack[include_depth].file;
 
     yy_switch_to_buffer(yy_create_buffer(yyin, YY_BUF_SIZE));
 
@@ -288,8 +288,8 @@ int l_parse_file(char *file) {
     l_include_stack[include_depth].file = file;
     l_include_stack[include_depth].line_no = 1;
 
-    parser_file = file;
-    parser_line = 1;
+    parser_line = l_include_stack[include_depth].line_no;
+    parser_file = l_include_stack[include_depth].file;
 
     /* add a dummy symtable entry */
     y_add_symtable("*", &star_symbol);

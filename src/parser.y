@@ -197,8 +197,8 @@ void y_dump_value(value_t *value);
 
 program: EOL { l_advance_line(); }
 | line EOL { l_advance_line(); }
-| program line EOL { l_advance_line(); }
 | program EOL { l_advance_line(); }
+| program line EOL { l_advance_line(); }
 ;
 
 line: LINE {}

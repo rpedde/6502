@@ -84,6 +84,7 @@ extern void value_promote(value_t *value);
 extern void value_demote(value_t *value);
 extern int y_can_evaluate(value_t *value);
 extern int l_parse_file(char *file);
+extern void l_advance_line(void);
 extern void yyerror(char *format, ...);
 
 #define OPCODE_NOTFOUND 0x0100
