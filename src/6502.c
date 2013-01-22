@@ -312,18 +312,11 @@ uint8_t cpu_execute(void) {
 
     case CPU_OPCODE_ASL:
         /* C <- [76543210] <- 0 :: N Z C */
-        t161 = cpu_state.a << 1;
-        t81 = t161 & 0xff;
-        cpu_set_flag(FLAG_N, t81 & 0x80);
-        cpu_set_flag(FLAG_Z, t81 == 0);
+        t161 = value << 1;
+        value = t161 & 0xff;
+        cpu_set_flag(FLAG_N, value & 0x80);
+        cpu_set_flag(FLAG_Z, value == 0);
         cpu_set_flag(FLAG_C, t161 & 0x0100);
-
-        /* result goes in accumulator or memory */
-        if (opmap->addressing_mode == CPU_ADDR_MODE_ACCUMULATOR) {
-            cpu_state.a = t81;
-        } else {
-            memory_write(addr, t81);
-        }
         break;
 
     case CPU_OPCODE_BCC:
@@ -525,13 +518,6 @@ uint8_t cpu_execute(void) {
         value = value >> 1;
         cpu_set_flag(FLAG_Z, value == 0);
         cpu_set_flag(FLAG_N, value & 0x80);
-
-        /* result goes in accumulator or memory */
-        if (opmap->addressing_mode == CPU_ADDR_MODE_ACCUMULATOR) {
-            cpu_state.a = value;
-        } else {
-            memory_write(addr, value);
-        }
         break;
 
     case CPU_OPCODE_NOP:
@@ -572,13 +558,6 @@ uint8_t cpu_execute(void) {
         value |= t81;
         cpu_set_flag(FLAG_N, value & 0x80);
         cpu_set_flag(FLAG_Z, value == 0);
-
-        /* result goes in accumulator or memory */
-        if (opmap->addressing_mode == CPU_ADDR_MODE_ACCUMULATOR) {
-            cpu_state.a = value;
-        } else {
-            memory_write(addr, value);
-        }
         break;
 
     case CPU_OPCODE_ROR:
@@ -590,13 +569,6 @@ uint8_t cpu_execute(void) {
             value |= 0x80;
         cpu_set_flag(FLAG_N, value & 0x80);
         cpu_set_flag(FLAG_Z, value == 0);
-
-        /* result goes in accumulator or memory */
-        if (opmap->addressing_mode == CPU_ADDR_MODE_ACCUMULATOR) {
-            cpu_state.a = value;
-        } else {
-            memory_write(addr, value);
-        }
         break;
 
     case CPU_OPCODE_RTI:
@@ -685,7 +657,9 @@ uint8_t cpu_execute(void) {
     if (opinfo->stores) {
         switch(opmap->addressing_mode) {
         case CPU_ADDR_MODE_IMMEDIATE:
+            break;
         case CPU_ADDR_MODE_ACCUMULATOR:
+            cpu_state.a = value;
             break;
         default:
             memory_write(addr, value);

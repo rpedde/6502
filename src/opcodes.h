@@ -141,7 +141,7 @@ opcode_info_t cpu_opcode_info[] = {
     { "anc", 0, 0, 0 }, /* undoc */
     { "and", 1, 0, 1 },
     { "arr", 0, 0, 0 }, /* undoc */
-    { "asl", 0, 0, 1 },
+    { "asl", 1, 1, 1 },
     { "asr", 0, 0, 0 }, /* undoc */
     { "asx", 0, 0, 0 }, /* undoc */
     { "ax7", 0, 0, 0 }, /* undoc */
