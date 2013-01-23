@@ -64,6 +64,7 @@ typedef struct symtable_t_struct {
 extern symtable_t symtable;
 extern int parser_line;
 extern uint16_t compiler_offset;
+extern uint16_t cur_addr;
 
 #define CPU_ADDR_MODE_UNKNOWN    0x80
 #define CPU_ADDR_MODE_UNKNOWN_X  0x81

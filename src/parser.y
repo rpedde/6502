@@ -58,6 +58,8 @@ void *error_malloc(ssize_t size);
 void y_value_free(value_t *value);
 void y_dump_value(value_t *value);
 
+uint16_t cur_addr;
+
 %}
 
 %union {
@@ -195,15 +197,15 @@ void y_dump_value(value_t *value);
 
 %%
 
-program: EOL { l_advance_line(); }
-| line EOL { l_advance_line(); }
-| program EOL { l_advance_line(); }
-| program line EOL { l_advance_line(); }
+program: EOL { l_advance_line(); cur_addr = compiler_offset; }
+| line EOL { l_advance_line(); cur_addr = compiler_offset; }
+| program EOL { l_advance_line(); cur_addr = compiler_offset; }
+| program line EOL { l_advance_line(); cur_addr = compiler_offset; }
 ;
 
 line: LINE {}
 | LABELLINE {}
-| LABEL LABELLINE { y_add_wordsym($1, compiler_offset); }
+| LABEL LABELLINE { y_add_wordsym($1, cur_addr); }
 ;
 
 /* line that cannot be labeled */

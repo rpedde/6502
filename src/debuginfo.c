@@ -139,6 +139,7 @@ int debuginfo_load(char *file) {
     uint16_t addr;
     uint32_t line;
     uint16_t flen;
+    uint16_t type;
     char filename[PATH_MAX];
 
     debuginfo_fh_t *pinfo;
@@ -151,7 +152,24 @@ int debuginfo_load(char *file) {
     if(!fin)
         return 0;
 
+    if((fread(&line, 1, sizeof(uint32_t), fin) != sizeof(uint32_t))) {
+        fclose(fin);
+        return 0;
+    }
+
+    if(line != 0xdeadbeef) {
+        fclose(fin);
+        return 0;
+    }
+
+
     while(1) {
+        if((fread(&type, 1, sizeof(uint16_t), fin) != sizeof(uint16_t)))
+            break;
+
+        /* need to eventually add different record types
+           (symbol vs source line) */
+
         if((fread(&addr, 1, sizeof(uint16_t), fin) != sizeof(uint16_t)))
             break;
 

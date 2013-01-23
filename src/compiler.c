@@ -599,12 +599,20 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
         pcurrent = list.next;
         current_offset = pcurrent->data->offset - 1;
 
+        uint32_t magic = 0xdeadbeef;
+        fwrite(&magic, 1, sizeof(uint32_t), dbg);
+
         while(pcurrent) {
             uint16_t fsize;
+            uint16_t record_type;
+
+            record_type = 0;
 
             if ((pcurrent->data) && (pcurrent->data->offset != current_offset)) {
                 char *fullpath;
                 fullpath = realpath(pcurrent->data->file, NULL);
+
+                fwrite(&record_type, 1, sizeof(uint16_t),dbg);
                 fwrite(&pcurrent->data->offset, 1, sizeof(uint16_t), dbg);
                 fwrite(&pcurrent->data->line, 1, sizeof(uint32_t), dbg);
                 fsize = strlen(fullpath) + 1;
@@ -673,6 +681,7 @@ int main(int argc, char *argv[]) {
         *suffix = 0;
 
     compiler_offset = 0x8000;
+    cur_addr = 0x8000;
 
     INFO("Pass 1:  Parsing.");
     l_parse_file(argv[optind]);

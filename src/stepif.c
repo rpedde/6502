@@ -646,7 +646,11 @@ void process_command(char *cmd) {
             break;
         }
 
-        debuginfo_load(argv[1]);
+        if(!debuginfo_load(argv[1])) {
+            tui_putstring(pcommand, " Error loading debug symbols\n");
+            break;
+        }
+
         tui_putstring(pcommand, " Loaded.\n");
 
         if(stepif_display_mode == DISPLAY_MODE_DISASM)
