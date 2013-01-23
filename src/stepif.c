@@ -372,15 +372,9 @@ int fixup_line(char **line) {
     char *start;
     char *token;
 
+    int line_size = 80;
     char *src, *dst;
     int last_space = 0;
-
-    newline = (char*)malloc(strlen(*line) + 1);
-    if(!newline) {
-        perror("malloc");
-        exit(EXIT_FAILURE);
-    }
-    memset(newline, 0, strlen(start) + 1);
 
     src = dst = *line;
 
@@ -407,6 +401,9 @@ int fixup_line(char **line) {
     }
     *dst = '\0';
 
+    newline = (char*)error_malloc(line_size);
+    memset(newline, 0, line_size);
+
     start = *line;
     token = strsep(&start, "\t ");
     if(!token) {
@@ -415,14 +412,14 @@ int fixup_line(char **line) {
     }
 
     if(is_opcode(token)) {
-        sprintf(newline, "               %s", token);
+        snprintf(newline, line_size - strlen(newline), "               %s", token);
     } else {
-        sprintf(newline, "%-14s", token);
+        snprintf(newline, line_size - strlen(newline), "%-14s", token);
     }
 
     while((token = strsep(&start, " ")) != NULL) {
-        strcat(newline, " ");
-        strcat(newline, token);
+        strncat(newline, " ", line_size - strlen(newline));
+        strncat(newline, token, line_size - strlen(newline));
     }
 
     *line = newline;
@@ -604,14 +601,19 @@ void process_command(char *cmd) {
         break;
 
     case TOK_BREAK:
-        if(argc != 2) {
-            stepif_debug(D_ERROR, "Usage: break <$addr>\n");
+        /* allow break with no arg to break on current line */
+        if(argc > 2) {
+            stepif_debug(D_ERROR, "Usage: break [<$addr>]\n");
             break;
         }
 
-        if(sscanf(argv[1], "$%x", &temp) != 1) {
-            stepif_debug(D_ERROR, "Bad address format (should be $xxxx)\n");
-            break;
+        if(argc == 1) {
+            temp = stepif_state.ip;
+        } else {
+            if(sscanf(argv[1], "$%x", &temp) != 1) {
+                stepif_debug(D_ERROR, "Bad address format (should be $xxxx)\n");
+                break;
+            }
         }
 
         if (breakpoint_is_set((uint16_t)temp)) {
@@ -828,7 +830,7 @@ void display_update_disasm(void) {
     int result;
     dbg_command_t command;
     dbg_response_t response;
-    uint8_t *data;
+    uint8_t *data = NULL;
     uint8_t line;
     int pos;
 
@@ -966,7 +968,8 @@ void display_update_disasm(void) {
         tui_resetcolor(pdisplay);
     }
 
-    free(data);
+    if(data)
+        free(data);
 }
 
 void display_update(void) {
