@@ -32,6 +32,11 @@ typedef struct debug_info_t {
     long offset;
 } debug_info_t;
 
+typedef struct debug_info_symtable_t {
+    char *label;
+    uint16_t address;
+} debug_info_symtable_t;
+
 typedef struct debuginfo_fh_t {
     char *file;
     FILE *fp;
@@ -43,11 +48,13 @@ typedef struct debuginfo_fh_t {
 debuginfo_fh_t debuginfo_fh = { NULL, NULL, 0, 0, NULL };
 
 static struct rbtree *debug_rb = NULL;
+static struct rbtree *debug_symbol_rb = NULL;
 
 static int debuginfo_compare(const void *a, const void *b, const void *config);
-int debuginfo_load(char *file);
-debuginfo_fh_t *debuginfo_fh_find(char *file);
-
+static int debuginfo_symbol_compare(const void *a, const void *b, const void *config);
+static debuginfo_fh_t *debuginfo_fh_find(char *file);
+static int debuginfo_add_symtable(FILE *fin);
+static int debuginfo_add_opaddr(FILE *fin);
 
 static int debuginfo_compare(const void *a, const void *b, const void *config) {
     debug_info_t *ap = (debug_info_t*)a;
@@ -135,11 +142,71 @@ int debuginfo_getline(uint16_t addr, char *buffer, int len) {
  */
 int debuginfo_load(char *file) {
     FILE *fin;
+    uint32_t magic;
+    uint16_t record_type;
 
+    fin = fopen(file, "r");
+    if(!fin)
+        return 0;
+
+    if((fread(&magic, 1, sizeof(uint32_t), fin) != sizeof(uint32_t))) {
+        fclose(fin);
+        return 0;
+    }
+
+    if(magic != 0xdeadbeef) {
+        fclose(fin);
+        return 0;
+    }
+
+
+    while(1) {
+        if((fread(&record_type, 1, sizeof(uint16_t), fin) != sizeof(uint16_t)))
+            break;
+
+        if(record_type == 0) {
+            if(!debuginfo_add_opaddr(fin))
+                break;
+        } else if(record_type == 1) {
+            if(!debuginfo_add_symtable(fin))
+                break;
+        } else {
+            fprintf(stderr, "unknown debug symbol type");
+            exit(EXIT_FAILURE);
+        }
+    }
+    fclose(fin);
+
+    return 1;
+}
+
+int debuginfo_add_symtable(FILE *fin) {
+    uint16_t symsize;
+    char *label;
+    uint16_t value;
+
+    if((fread(&symsize, 1, sizeof(uint16_t), fin) != sizeof(uint16_t)))
+        return 0;
+
+    label = (char*)malloc(symsize);
+    if(!label) {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+
+    if((fread(label, 1, symsize, fin) != symsize))
+        return 0;
+
+    if((fread(&value, 1, sizeof(uint16_t), fin) != sizeof(uint16_t)))
+        return 0;
+
+    return 1;
+}
+
+int debuginfo_add_opaddr(FILE *fin) {
     uint16_t addr;
     uint32_t line;
     uint16_t flen;
-    uint16_t type;
     char filename[PATH_MAX];
 
     debuginfo_fh_t *pinfo;
@@ -148,90 +215,65 @@ int debuginfo_load(char *file) {
     struct debug_info_t *pdebug;
     const struct debug_info_t *val;
 
-    fin = fopen(file, "r");
-    if(!fin)
+    if((fread(&addr, 1, sizeof(uint16_t), fin) != sizeof(uint16_t)))
         return 0;
 
-    if((fread(&line, 1, sizeof(uint32_t), fin) != sizeof(uint32_t))) {
-        fclose(fin);
+    if((fread(&line, 1, sizeof(uint32_t), fin) != sizeof(uint32_t)))
         return 0;
-    }
 
-    if(line != 0xdeadbeef) {
-        fclose(fin);
+    if((fread(&flen, 1, sizeof(uint16_t), fin) != sizeof(uint16_t)))
         return 0;
-    }
 
+    if((fread(filename, 1, flen, fin) != flen))
+        return 0;
 
-    while(1) {
-        if((fread(&type, 1, sizeof(uint16_t), fin) != sizeof(uint16_t)))
-            break;
+    /* we have an entry, make a rb for it */
+    pinfo = debuginfo_fh_find(filename);
 
-        /* need to eventually add different record types
-           (symbol vs source line) */
+    if(pinfo) {
+        if(line < pinfo->current_line) {
+            pinfo->current_line = 1;
+            pinfo->offset = 0;
+        }
 
-        if((fread(&addr, 1, sizeof(uint16_t), fin) != sizeof(uint16_t)))
-            break;
+        fseek(pinfo->fp, pinfo->offset, SEEK_SET);
 
-        if((fread(&line, 1, sizeof(uint32_t), fin) != sizeof(uint32_t)))
-            break;
-
-        if((fread(&flen, 1, sizeof(uint16_t), fin) != sizeof(uint16_t)))
-            break;
-
-        if((fread(filename, 1, flen, fin) != flen))
-            break;
-
-        /* we have an entry, make a rb for it */
-        pinfo = debuginfo_fh_find(filename);
-
-        if(pinfo) {
-            if(line < pinfo->current_line) {
+        while(pinfo->current_line < line) {
+            str = fgets(filename, sizeof(filename), pinfo->fp);
+            if(!str) {
                 pinfo->current_line = 1;
                 pinfo->offset = 0;
+                break;
             }
 
-            fseek(pinfo->fp, pinfo->offset, SEEK_SET);
+            if(filename[strlen(filename) - 1] == 0x0a) {
+                /* newline! */
+                pinfo->current_line++;
+                pinfo->offset = ftell(pinfo->fp);
+            }
+        }
 
-            while(pinfo->current_line < line) {
-                str = fgets(filename, sizeof(filename), pinfo->fp);
-                if(!str) {
-                    pinfo->current_line = 1;
-                    pinfo->offset = 0;
-                    break;
-                }
-
-                if(filename[strlen(filename) - 1] == 0x0a) {
-                    /* newline! */
-                    pinfo->current_line++;
-                    pinfo->offset = ftell(pinfo->fp);
-                }
+        if(pinfo->current_line == line) {
+            /* we have everything.  do it */
+            pdebug = (debug_info_t *)malloc(sizeof(debug_info_t));
+            if(!pdebug) {
+                perror("malloc");
+                exit(EXIT_FAILURE);
             }
 
-            if(pinfo->current_line == line) {
-                /* we have everything.  do it */
-                pdebug = (debug_info_t *)malloc(sizeof(debug_info_t));
-                if(!pdebug) {
-                    perror("malloc");
-                    exit(EXIT_FAILURE);
-                }
+            pdebug->address = addr;
+            pdebug->fp = pinfo->fp;
+            pdebug->offset = pinfo->offset;
 
-                pdebug->address = addr;
-                pdebug->fp = pinfo->fp;
-                pdebug->offset = pinfo->offset;
+            /* printf("addr $%04x: line: %d offset: %lu\n", addr, pinfo->current_line, pinfo->offset); */
 
-                /* printf("addr $%04x: line: %d offset: %lu\n", addr, pinfo->current_line, pinfo->offset); */
-
-                val = (debug_info_t *)rbsearch(pdebug, debug_rb);
-                if(val != pdebug) {
-                    rbdelete((void*)val, debug_rb);
-                    rbsearch((void*)pdebug, debug_rb);
-                }
+            val = (debug_info_t *)rbsearch(pdebug, debug_rb);
+            if(val != pdebug) {
+                rbdelete((void*)val, debug_rb);
+                rbsearch((void*)pdebug, debug_rb);
             }
-        } /* else we couldn't open the file, probably */
+        }
     }
-
-    fclose(fin);
     return 1;
 }
 

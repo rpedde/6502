@@ -334,6 +334,7 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
     uint16_t last_offset;
     value_t *pvalue;
     hex_line_t hexline;
+    uint16_t record_type;
 
     if(write_map) {
         map = make_fh(basename, "map", 0);
@@ -604,7 +605,6 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
 
         while(pcurrent) {
             uint16_t fsize;
-            uint16_t record_type;
 
             record_type = 0;
 
@@ -622,6 +622,28 @@ void write_output(char *basename, int write_map, int write_bin, int write_hex, i
                 current_offset = pcurrent->data->offset;
             }
             pcurrent = pcurrent->next;
+        }
+
+        /* write the symbol table now */
+        record_type = 1;
+
+        psym = symtable.next;
+        while(psym) {
+            if (strcmp(psym->label, "*") != 0) {
+                uint16_t value;
+                uint16_t fsize;
+
+                fwrite(&record_type, 1, sizeof(uint16_t),dbg);
+                fsize = strlen(psym->label) + 1;
+                fwrite(&fsize, 1, sizeof(uint16_t), dbg);
+                fwrite(psym->label, 1, strlen(psym->label) + 1, dbg);
+                if(psym->value->type == Y_TYPE_BYTE)
+                    value = psym->value->byte;
+                else
+                    value = psym->value->word;
+                fwrite(&value, 1, sizeof(uint16_t), dbg);
+            }
+            psym = psym->next;
         }
         fclose(dbg);
     }
