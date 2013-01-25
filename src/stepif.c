@@ -1,3 +1,23 @@
+/* -*- mode: c -*-
+ *
+ * Copyright (C) 2012, 2013 Ron Pedde <ron@pedde.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#include <assert.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <memory.h>
@@ -33,6 +53,7 @@ int stepif_running = 0;
 cpu_t stepif_state;
 int stepif_display_mode;
 int stepif_display_track;
+int stepif_radix = 10;
 
 uint16_t stepif_disassemble_addr;
 uint16_t stepif_dump_addr;
@@ -69,6 +90,7 @@ struct rbtree *stepif_watches = NULL;
 #define TOK_FOLLOW      9
 #define TOK_DI         10
 #define TOK_WATCH      11
+#define TOK_RADIX      12
 #define TOK_UNKNOWN   100
 #define TOK_AMBIGUOUS 101
 
@@ -85,6 +107,7 @@ char *tokens[] = {
     "follow",
     "di",
     "watch",
+    "radix",
     NULL
 };
 
@@ -165,6 +188,54 @@ int breakpoint_is_set(uint16_t addr) {
     return 0;
 }
 
+void stepif_debug(int level, char *format, ...) {
+    va_list args;
+    if(level > stepif_debug_threshold)
+        return;
+
+    tui_putstring(pcommand, " ");
+    va_start(args, format);
+    tui_putva(pcommand, format, args);
+    va_end(args);
+}
+
+/**
+ * eval a string, using current radix, or looking it up
+ * as a symbol
+ */
+int stepif_eval(char *string, uint16_t *value) {
+    char *endptr;
+
+    assert(string);
+
+    if(!string)
+        return 0;
+
+    if(string[0] == '$') {
+        /* force radix 16 */
+        *value = strtol(&string[1], NULL, 16);
+        return 1;
+    }
+
+    if(string[0] == '%') {
+        /* force 2 */
+        *value = strtol(&string[1], NULL, 2);
+        return 1;
+    }
+
+    if(string[0] == '#') {
+        *value = strtol(&string[1], NULL, 10);
+        return 1;
+    }
+
+    *value = strtol(string, &endptr, stepif_radix);
+    if(*endptr) {
+        /* must be a symbol? */
+        return debuginfo_lookup_symbol(string, value);
+    }
+    return 1;
+}
+
 
 int get_token(char *string) {
     int token = 0;
@@ -188,18 +259,6 @@ int get_token(char *string) {
         return TOK_AMBIGUOUS;
 
     return TOK_UNKNOWN;
-}
-
-
-void stepif_debug(int level, char *format, ...) {
-    va_list args;
-    if(level > stepif_debug_threshold)
-        return;
-
-    tui_putstring(pcommand, " ");
-    va_start(args, format);
-    tui_putva(pcommand, format, args);
-    va_end(args);
 }
 
 int stepif_command(dbg_command_t *command, uint8_t *out_data, dbg_response_t *retval, uint8_t **in_data) {
@@ -439,7 +498,7 @@ void process_command(char *cmd) {
     uint8_t *data = NULL;
     int result;
     int token;
-    unsigned int temp;
+    uint16_t temp;
     uint16_t old_ip = stepif_state.ip;
     static int stall_count = 0;
 
@@ -469,8 +528,9 @@ void process_command(char *cmd) {
             stepif_debug(D_ERROR, "Usage: dump <$addr>\n");
             break;
         }
-        if(sscanf(argv[1], "$%x", &temp) != 1) {
-            stepif_debug(D_ERROR, "Bad address format (should be $xxxx)\n");
+
+        if(!stepif_eval(argv[1], &temp)) {
+            stepif_debug(D_ERROR, "Invalid dump address\n");
             break;
         }
 
@@ -484,8 +544,9 @@ void process_command(char *cmd) {
             stepif_debug(D_ERROR, "Usage: disasm <$addr>\n");
             break;
         }
-        if(sscanf(argv[1], "$%x", &temp) != 1) {
-            stepif_debug(D_ERROR, "Bad address format (should be $xxxx)\n");
+
+        if(!stepif_eval(argv[1], &temp)) {
+            stepif_debug(D_ERROR, "Invalid address\n");
             break;
         }
 
@@ -500,8 +561,8 @@ void process_command(char *cmd) {
             break;
         }
 
-        if(sscanf(argv[2], "$%x", &temp) != 1) {
-            stepif_debug(D_ERROR, "Bad address format (should be $xxxx)\n");
+        if(!stepif_eval(argv[2], &temp)) {
+            stepif_debug(D_ERROR, "Invalid address\n");
             break;
         }
 
@@ -522,8 +583,8 @@ void process_command(char *cmd) {
             break;
         }
 
-        if(sscanf(argv[2], "$%x", &temp) != 1) {
-            stepif_debug(D_ERROR, "Bad address format (should be $xxxx)\n");
+        if(!stepif_eval(argv[2], &temp)) {
+            stepif_debug(D_ERROR, "Invalid value\n");
             break;
         }
 
@@ -610,8 +671,8 @@ void process_command(char *cmd) {
         if(argc == 1) {
             temp = stepif_state.ip;
         } else {
-            if(sscanf(argv[1], "$%x", &temp) != 1) {
-                stepif_debug(D_ERROR, "Bad address format (should be $xxxx)\n");
+            if(!stepif_eval(argv[1], &temp)) {
+                stepif_debug(D_ERROR, "Invalid addr\n");
                 break;
             }
         }
@@ -665,8 +726,8 @@ void process_command(char *cmd) {
             break;
         }
 
-        if(sscanf(argv[1], "$%x", &temp) != 1) {
-            stepif_debug(D_ERROR, "Bad address format (should be $xxxx)\n");
+        if(!stepif_eval(argv[1], &temp)) {
+            stepif_debug(D_ERROR, "Invalid addr\n");
             break;
         }
 
@@ -681,6 +742,20 @@ void process_command(char *cmd) {
         if((stepif_display_mode == DISPLAY_MODE_DUMP) ||
            (stepif_display_mode == DISPLAY_MODE_WATCH))
             tui_refresh(pdisplay);
+        break;
+
+    case TOK_RADIX:
+        if(argc != 2) {
+            stepif_debug(D_ERROR, "Usage: radix <base>, where base is 10 or 16\n");
+            break;
+        }
+
+        if(strcmp(argv[1], "16") == 0)
+            stepif_radix = 16;
+        else if(strcmp(argv[1], "10") == 0)
+            stepif_radix = 10;
+        else
+            stepif_debug(D_ERROR, "Radix must be 10 or 16\n");
         break;
 
     case TOK_AMBIGUOUS:
