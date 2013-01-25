@@ -69,6 +69,14 @@ static int debuginfo_compare(const void *a, const void *b, const void *config) {
     return 1;
 }
 
+static int debuginfo_symbol_compare(const void *a, const void *b, const void *config) {
+    debug_info_symtable_t *ap = (debug_info_symtable_t *)a;
+    debug_info_symtable_t *bp = (debug_info_symtable_t *)b;
+
+    return strcasecmp(ap->label, bp->label);
+}
+
+
 debuginfo_fh_t *debuginfo_fh_find(char *file) {
     debuginfo_fh_t *pinfo = debuginfo_fh.next;
     while(pinfo) {
@@ -180,10 +188,27 @@ int debuginfo_load(char *file) {
     return 1;
 }
 
+int debuginfo_lookup_symbol(char *symbol, uint16_t *value) {
+    debug_info_symtable_t lookup;
+    debug_info_symtable_t *val = NULL;
+
+    lookup.label = symbol;
+
+    val = (debug_info_symtable_t *)rbfind((void*)&lookup, debug_symbol_rb);
+
+    if(val) {
+        *value = val->address;
+        return 1;
+    }
+    return 0;
+}
+
+
 int debuginfo_add_symtable(FILE *fin) {
     uint16_t symsize;
-    char *label;
     uint16_t value;
+    char *label;
+    debug_info_symtable_t *pnew;
 
     if((fread(&symsize, 1, sizeof(uint16_t), fin) != sizeof(uint16_t)))
         return 0;
@@ -194,11 +219,26 @@ int debuginfo_add_symtable(FILE *fin) {
         exit(EXIT_FAILURE);
     }
 
-    if((fread(label, 1, symsize, fin) != symsize))
+    if((fread(label, 1, symsize, fin) != symsize)) {
+        free(label);
         return 0;
+    }
 
-    if((fread(&value, 1, sizeof(uint16_t), fin) != sizeof(uint16_t)))
+    if((fread(&value, 1, sizeof(uint16_t), fin) != sizeof(uint16_t))) {
+        free(label);
         return 0;
+    }
+
+    pnew = (debug_info_symtable_t *)malloc(sizeof(debug_info_symtable_t));
+    if(!pnew) {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+
+    pnew->label = label;
+    pnew->address = value;
+
+    rbsearch(pnew, debug_symbol_rb);
 
     return 1;
 }
@@ -285,6 +325,10 @@ int debuginfo_add_opaddr(FILE *fin) {
  */
 int debuginfo_init(void) {
     if ((debug_rb=rbinit(debuginfo_compare, NULL)) == NULL) {
+        return 0;
+    }
+
+    if((debug_symbol_rb=rbinit(debuginfo_symbol_compare, NULL)) == NULL) {
         return 0;
     }
 

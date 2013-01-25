@@ -22,5 +22,6 @@ extern int debuginfo_init(void);
 extern int debuginfo_deinit(void);
 extern int debuginfo_getline(uint16_t addr, char *buffer, int len);
 extern int debuginfo_load(char *file);
+extern int debuginfo_lookup_symbol(char *symbol, uint16_t *value);
 
 #endif /* _DEBUGINFO_H_ */
