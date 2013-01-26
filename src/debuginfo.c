@@ -49,9 +49,12 @@ debuginfo_fh_t debuginfo_fh = { NULL, NULL, 0, 0, NULL };
 
 static struct rbtree *debug_rb = NULL;
 static struct rbtree *debug_symbol_rb = NULL;
+static struct rbtree *debug_symbol_reverse_rb = NULL;
 
 static int debuginfo_compare(const void *a, const void *b, const void *config);
 static int debuginfo_symbol_compare(const void *a, const void *b, const void *config);
+static int debuginfo_symbol_addr(const void *a, const void *b, const void *config);
+
 static debuginfo_fh_t *debuginfo_fh_find(char *file);
 static int debuginfo_add_symtable(FILE *fin);
 static int debuginfo_add_opaddr(FILE *fin);
@@ -74,6 +77,19 @@ static int debuginfo_symbol_compare(const void *a, const void *b, const void *co
     debug_info_symtable_t *bp = (debug_info_symtable_t *)b;
 
     return strcasecmp(ap->label, bp->label);
+}
+
+static int debuginfo_symbol_addr(const void *a, const void *b, const void *config) {
+    debug_info_symtable_t *ap = (debug_info_symtable_t *)a;
+    debug_info_symtable_t *bp = (debug_info_symtable_t *)b;
+
+    if(ap->address == bp->address)
+        return 0;
+
+    if(ap->address < bp->address)
+        return -1;
+
+    return 1;
 }
 
 
@@ -188,6 +204,22 @@ int debuginfo_load(char *file) {
     return 1;
 }
 
+int debuginfo_lookup_addr(uint16_t addr, char **symbol) {
+    debug_info_symtable_t lookup;
+    debug_info_symtable_t *val = NULL;
+
+    lookup.address = addr;
+
+    val = (debug_info_symtable_t *)rbfind((void*)&lookup, debug_symbol_reverse_rb);
+
+    if(val) {
+        *symbol = val->label;
+        return 1;
+    }
+
+    return 0;
+}
+
 int debuginfo_lookup_symbol(char *symbol, uint16_t *value) {
     debug_info_symtable_t lookup;
     debug_info_symtable_t *val = NULL;
@@ -239,6 +271,7 @@ int debuginfo_add_symtable(FILE *fin) {
     pnew->address = value;
 
     rbsearch(pnew, debug_symbol_rb);
+    rbsearch(pnew, debug_symbol_reverse_rb);
 
     return 1;
 }
@@ -332,6 +365,9 @@ int debuginfo_init(void) {
         return 0;
     }
 
+    if((debug_symbol_reverse_rb = rbinit(debuginfo_symbol_addr, NULL)) == NULL) {
+        return 0;
+    }
     return 1;
 }
 
