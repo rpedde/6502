@@ -269,8 +269,8 @@ int debuginfo_add_symtable(FILE *fin) {
     pnew->label = label;
     pnew->address = value;
 
-    rbsearch(pnew, debug_symbol_rb);
     rbsearch(pnew, debug_symbol_reverse_rb);
+    rbsearch(pnew, debug_symbol_rb);
 
     return 1;
 }

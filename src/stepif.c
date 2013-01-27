@@ -53,7 +53,7 @@ int stepif_running = 0;
 cpu_t stepif_state;
 int stepif_display_mode;
 int stepif_display_track;
-int stepif_radix = 10;
+int stepif_radix = 16;
 
 uint16_t stepif_disassemble_addr;
 uint16_t stepif_dump_addr;
@@ -426,10 +426,12 @@ int is_opcode(char *str) {
  * @param line data to fix.  will return a mallocd string,
  * caller must free.
  */
-int fixup_line(char **line) {
+int fixup_line(uint16_t addr, char **line) {
     char *newline;
     char *start;
     char *token;
+    char *label = NULL;
+    char *comment = NULL;
 
     int line_size = 80;
     char *src, *dst;
@@ -445,7 +447,7 @@ int fixup_line(char **line) {
             last_space = 1;
         else if (*src == ';') {
             *dst++ = 0;
-            break;
+            comment = dst;
         } else if (*src == '\n' || *src == '\r') {
             /* nothing */
         } else {
@@ -470,15 +472,38 @@ int fixup_line(char **line) {
         return 0;
     }
 
-    if(is_opcode(token)) {
-        snprintf(newline, line_size - strlen(newline), "               %s", token);
+    if(debuginfo_lookup_addr(addr, &label)) {
+        sprintf(newline, "%-14s", label);
+        if(is_opcode(token)) {
+            strcat(newline, token);
+        } else {
+            if((strcasecmp(label, token) == 0) ||
+               ((strlen(token) == strlen(label) + 1) &&
+                (strncasecmp(label, token, strlen(token)) == 0))) {
+                /* token is the label... ignore it */
+            } else {
+                /* token is something else... .db directive, etc */
+                snprintf(&newline[strlen(newline)], line_size - strlen(newline), "%s", token);
+            }
+        }
     } else {
-        snprintf(newline, line_size - strlen(newline), "%-14s", token);
+        sprintf(newline, "              %s", token);
     }
 
     while((token = strsep(&start, " ")) != NULL) {
         strncat(newline, " ", line_size - strlen(newline));
         strncat(newline, token, line_size - strlen(newline));
+    }
+
+    /* append the comments at 28 */
+    while(strlen(newline) < 35) {
+        strcat(newline, " ");
+    }
+
+    /* snprintf(&newline[strlen(newline)], line_size - strlen(newline), "%*s", (int)30 - strlen(newline), ""); */
+    if(comment) {
+        strncat(newline, ";", line_size - strlen(newline));
+        strncat(newline, comment, line_size - strlen(newline));
     }
 
     *line = newline;
@@ -1031,7 +1056,16 @@ void display_update_disasm(void) {
         if(debuginfo_getline(pos, linebuffer, sizeof(linebuffer))) {
             tui_setcolor(pdisplay, 6);
             char *linedata = linebuffer;
-            fixup_line(&linedata);
+            fixup_line(pos, &linedata);
+
+            /* line is 36 characters already.... trim the debug line */
+            if((36 + strlen(linedata)) > (pdisplay->width - 2)) {
+                int max_len = (pdisplay->width - 2) - 36;
+                if(max_len > 0) {
+                    linedata[max_len] = 0;
+                }
+            }
+
             tui_putstring(pdisplay, linedata);
             free(linedata);
             tui_resetcolor(pdisplay);

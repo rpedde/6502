@@ -250,8 +250,6 @@ uint8_t cpu_execute(void) {
 
     /* now we have the real addr, let's do the opcode business */
     switch(opmap->opcode_family) {
-
-
     case CPU_OPCODE_SBC:
         /* /\* A - M - C -> A :: N Z C V *\/ */
         if(cpu_state.p & FLAG_D) {
@@ -669,7 +667,9 @@ uint8_t cpu_execute(void) {
 
     if (opinfo->stores) {
         switch(opmap->addressing_mode) {
+        case CPU_ADDR_MODE_IMPLICIT:
         case CPU_ADDR_MODE_IMMEDIATE:
+        case CPU_ADDR_MODE_RELATIVE:
             break;
         case CPU_ADDR_MODE_ACCUMULATOR:
             cpu_state.a = value;
