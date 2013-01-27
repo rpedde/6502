@@ -408,29 +408,26 @@ uint8_t cpu_execute(void) {
 
     case CPU_OPCODE_CMP:
         /* A - M :: N Z C */
-        ts161 = cpu_state.a - value;  // - (value + cpu_flag(FLAG_C))
-
-        cpu_set_flag(FLAG_Z, ts161 == 0);
-        cpu_set_flag(FLAG_C, ts161 >= 0);
-        cpu_set_flag(FLAG_N, ts161 & 0x80);
+        t81 = cpu_state.a - value;
+        cpu_set_flag(FLAG_Z, cpu_state.a == value);
+        cpu_set_flag(FLAG_C, cpu_state.a >= value);
+        cpu_set_flag(FLAG_N, t81 & 0x80);
         break;
 
     case CPU_OPCODE_CPX:
         /* X - M :: N Z C */
-        ts161 = cpu_state.x - value;
-
-        cpu_set_flag(FLAG_Z, ts161 == 0);
-        cpu_set_flag(FLAG_C, ts161 >= 0);
-        cpu_set_flag(FLAG_N, ts161 < 0);
+        t81 = cpu_state.x - value;
+        cpu_set_flag(FLAG_Z, cpu_state.x == value);
+        cpu_set_flag(FLAG_C, cpu_state.x >= value);
+        cpu_set_flag(FLAG_N, t81 & 0x80);
         break;
 
     case CPU_OPCODE_CPY:
         /* Y - M :: N Z C */
-        ts161 = cpu_state.y - value;
-
-        cpu_set_flag(FLAG_Z, ts161 == 0);
-        cpu_set_flag(FLAG_C, ts161 >= 0);
-        cpu_set_flag(FLAG_N, ts161 < 0);
+        t81 = cpu_state.y - value;
+        cpu_set_flag(FLAG_Z, cpu_state.y == value);
+        cpu_set_flag(FLAG_C, cpu_state.y >= value);
+        cpu_set_flag(FLAG_N, t81 & 0x80);
         break;
 
     case CPU_OPCODE_DEC:
@@ -515,8 +512,6 @@ uint8_t cpu_execute(void) {
     case CPU_OPCODE_LSR:
         /* 0 -> [76543210] -> C :: Z C */
         cpu_set_flag(FLAG_C, value & 0x01);
-
-        DPRINTF(DBG_INFO, "LSR: Initial value: %02x", value);
 
         value = value >> 1;
         cpu_set_flag(FLAG_Z, value == 0);
