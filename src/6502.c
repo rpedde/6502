@@ -314,7 +314,8 @@ uint8_t cpu_execute(void) {
 
     case CPU_OPCODE_ASL:
         /* C <- [76543210] <- 0 :: N Z C */
-        t161 = value << 1;
+        t161 = value;
+        t161 <<= 1;
         value = t161 & 0xff;
         cpu_set_flag(FLAG_N, value & 0x80);
         cpu_set_flag(FLAG_Z, value == 0);
@@ -411,7 +412,7 @@ uint8_t cpu_execute(void) {
 
         cpu_set_flag(FLAG_Z, ts161 == 0);
         cpu_set_flag(FLAG_C, ts161 >= 0);
-        cpu_set_flag(FLAG_N, ts161 < 0);
+        cpu_set_flag(FLAG_N, ts161 & 0x80);
         break;
 
     case CPU_OPCODE_CPX:

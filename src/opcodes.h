@@ -175,6 +175,7 @@ opcode_info_t cpu_opcode_info[] = {
     { "jam", 0, 0, 0 },
     { "jmp", 0, 0, 1 },
     { "jsr", 0, 0, 1 },
+    /*       L  S  OK */
     { "las", 0, 0, 0 },
     { "lax", 0, 0, 0 },
     { "lda", 1, 0, 1 },
