@@ -3,7 +3,7 @@
 from py65.devices.mpu6502 import MPU as NMOS6502
 from py65.utils.addressing import AddressParser
 from py65.memory import ObservableMemory
-
+from py65.disassembler import Disassembler
 
 class PY65Emu(object):
     def __init__(self):
@@ -13,6 +13,7 @@ class PY65Emu(object):
 
         m = ObservableMemory(addrWidth=self.mpu.ADDR_WIDTH)
         self.mpu.memory = m
+        self.disassembler = Disassembler(self.mpu, self.address_parser)
 
     @property
     def a(self):
@@ -70,3 +71,6 @@ class PY65Emu(object):
 
     def step(self):
         self.mpu.step()
+
+    def disassemble(self, pc):
+        return self.disassembler.instruction_at(pc)

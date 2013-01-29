@@ -551,6 +551,8 @@ uint8_t cpu_execute(void) {
 
     case CPU_OPCODE_PLA:
         cpu_state.a = cpu_pull_8();
+        cpu_set_flag(FLAG_Z, cpu_state.a == 0);
+        cpu_set_flag(FLAG_N, cpu_state.a & 0x80);
         break;
 
     case CPU_OPCODE_PLP:
