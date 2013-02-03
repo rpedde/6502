@@ -42,10 +42,11 @@ static int step_rsp_fd = -1;
 #define STEP_BAD_REG "Bad register specified"
 #define STEP_BAD_FILE "Cannot open file"
 
-void step_return(uint8_t result, uint16_t len, uint8_t *data) {
+void step_return(uint8_t result, uint16_t retval, uint16_t len, uint8_t *data) {
     dbg_response_t response;
 
     response.response_status = result;
+    response.response_value = retval;
     response.extra_len = len;
 
     write(step_rsp_fd, (char*)&response, sizeof(response));
@@ -89,15 +90,15 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
 
     switch(cmd->cmd) {
     case CMD_NOP:
-        step_return(RESPONSE_OK, 0, NULL);
+        step_return(RESPONSE_OK, 0, 0, NULL);
         break;
 
     case CMD_VER:
-        step_return(RESPONSE_OK,strlen(version)+1,(uint8_t*)version);
+        step_return(RESPONSE_OK, 0, strlen(version)+1,(uint8_t*)version);
         break;
 
     case CMD_REGS:
-        step_return(RESPONSE_OK,sizeof(cpu_t),(uint8_t*)&cpu_state);
+        step_return(RESPONSE_OK, 0, sizeof(cpu_t),(uint8_t*)&cpu_state);
         break;
 
     case CMD_READMEM:
@@ -116,7 +117,7 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
             memory[current] = memory_read(current + start);
         }
 
-        step_return(RESPONSE_OK, len, memory);
+        step_return(RESPONSE_OK, 0, len, memory);
         free(memory);
         break;
 
@@ -130,7 +131,7 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
             memory_write(current + start, data[current]);
         }
 
-        step_return(RESPONSE_OK, 0, NULL);
+        step_return(RESPONSE_OK, 0, 0, NULL);
         break;
 
         /* FIXME: rewrite by loading the file and bytewise writing it */
@@ -164,17 +165,21 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
             cpu_state.ip = cmd->param2;
             break;
         default:
-            step_return(RESPONSE_ERROR, strlen(STEP_BAD_REG) + 1,
+            step_return(RESPONSE_ERROR, 0, strlen(STEP_BAD_REG) + 1,
                         (uint8_t*)STEP_BAD_REG);
             return;
         }
 
-        step_return(RESPONSE_OK, 0, NULL);
+        step_return(RESPONSE_OK, 0, 0, NULL);
         break;
 
     case CMD_NEXT:
         cpu_execute();
-        step_return(RESPONSE_OK,sizeof(cpu_t),(uint8_t*)&cpu_state);
+        step_return(RESPONSE_OK, 0, sizeof(cpu_t),(uint8_t*)&cpu_state);
+        break;
+
+    case CMD_CAPS:
+        step_return(RESPONSE_OK, 0, 0, NULL);
         break;
 
     default:

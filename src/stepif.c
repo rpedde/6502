@@ -58,6 +58,7 @@ int stepif_radix = 16;
 uint16_t stepif_disassemble_addr;
 uint16_t stepif_dump_addr;
 uint16_t stepif_watch_addr;
+uint16_t stepif_remote_caps = 0;
 
 int stepif_follow_on_run=1;
 
@@ -1233,6 +1234,9 @@ int main(int argc, char *argv[]) {
     char *fifo_path;
     int pos;
     int step_char;
+    int result;
+    dbg_command_t command;
+    dbg_response_t response;
 
     stepif_watches = rbinit(addr_compare, NULL);
     stepif_breakpoints = rbinit(addr_compare, NULL);
@@ -1290,6 +1294,21 @@ int main(int argc, char *argv[]) {
 
     tui_inputwindow(pcommand);
 
+    /* get capabilities first */
+    memset((void*)&command, 0, sizeof(command));
+    memset((void*)&response, 0, sizeof(response));
+
+    command.cmd = CMD_CAPS;
+
+    result = stepif_command(&command, NULL, &response, NULL);
+    if(response.response_status == RESPONSE_ERROR) {
+        fprintf(stderr, "Error: cannot get remote caps\n");
+        exit(EXIT_FAILURE);
+    }
+
+    stepif_remote_caps = response.response_value;
+
+    /* start running the step loop */
     while(1) {
         if(stepif_running) {
             step_char = tui_getch(pcommand);

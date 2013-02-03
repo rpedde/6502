@@ -38,6 +38,7 @@ class RP65Emu(object):
 
         # typedef struct dbg_response_t_struct {
         #     uint8_t response_status;
+        #     uint16_t response;
         #     uint16_t extra_len;
         # } dbg_response_t;
 
@@ -52,10 +53,10 @@ class RP65Emu(object):
 
         self.cmd_fd.write(req);
 
-        rsp = self.rsp_fd.read(struct.calcsize('BH'))
+        rsp = self.rsp_fd.read(struct.calcsize('BHH'))
 
         rsp_extra_data = None
-        rsp_status, rsp_extra_len = struct.unpack('BH', rsp)
+        rsp_status, rsp_response, rsp_extra_len = struct.unpack('BHH', rsp)
 
         if rsp_status != self.RESPONSE_OK:
             raise 'error sending command'

@@ -68,11 +68,23 @@
  */
 #define CMD_NEXT 0x07
 
+/* Get capabilities
+ */
+#define CMD_CAPS 0x08
+
+#define CAP_BP    0x01
+#define CAP_WATCH 0x02
+
+/* Add and remove breakpoints
+ */
+#define CMD_BP   0x09
+
+#define PARAM_BP_SET 0x01
+#define PARAM_BP_DEL 0x02
+
 /* Terminate the emulator
  */
 #define CMD_STOP     0xFF
-
-
 
 typedef struct dbg_command_t_struct {
     uint8_t cmd;
@@ -91,6 +103,7 @@ typedef struct dbg_command_t_struct {
 
 typedef struct dbg_response_t_struct {
     uint8_t response_status;
+    uint16_t response_value;
     uint16_t extra_len;
 } dbg_response_t;
 
