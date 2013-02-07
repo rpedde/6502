@@ -62,5 +62,6 @@ extern int tui_getch(window_t *pwindow);
 extern void tui_setcolor(window_t *pwindow, int colorpair);
 extern void tui_resetcolor(window_t *pwindow);
 extern void tui_cleareol(window_t *pwindow);
+extern void tui_set_exit_callback(void (*callback)(void));
 
 #endif /* _LIBTUI_H_ */

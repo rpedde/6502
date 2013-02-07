@@ -32,6 +32,8 @@ static int tui_initialized = 0;
 static window_t *tui_rootwindow = NULL;
 static window_t *tui_statusbar = NULL;
 static window_t *tui_titlebar = NULL;
+static void (*tui_exit_callback)(void) = NULL;
+
 static colorset_t tui_colorlist[] = {
     { 0, 0 },
     { 1, 1 },
@@ -194,7 +196,15 @@ void tui_putstring(window_t *pwindow, char *format, ...) {
 void tui_deinit(void) {
     if(tui_initialized)
         endwin();
+
+    if(tui_exit_callback)
+        tui_exit_callback();
+
     tui_initialized = 0;
+}
+
+void tui_set_exit_callback(void (*callback)(void)) {
+    tui_exit_callback = callback;
 }
 
 window_t *tui_makewindow(WINDOW *pcwindow) {

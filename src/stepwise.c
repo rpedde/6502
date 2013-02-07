@@ -254,6 +254,7 @@ void stepwise_debugger(char *fifo) {
 
         if(cmd.cmd == CMD_STOP) {
             DPRINTF(DBG_INFO, "Exiting emulator at debugger request\n");
+            step_return(RESPONSE_OK, 0, 0, NULL);
             return;
         }
 

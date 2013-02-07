@@ -22,8 +22,12 @@
 #include <stdlib.h>
 #include <memory.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <unistd.h>
 #include <string.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/time.h>
 
 #include "emulator.h"
 #include "libtui.h"
@@ -45,10 +49,14 @@ int stepif_cmd_fd = -1;
 int stepif_rsp_fd = -1;
 int stepif_debug_threshold = 2;
 int stepif_running = 0;
+int stepif_emu_pid = 0;
 
 #define DISPLAY_MODE_DUMP    0
 #define DISPLAY_MODE_DISASM  1
 #define DISPLAY_MODE_WATCH   2
+
+#define PIPE_READ_FD   0
+#define PIPE_WRITE_FD  1
 
 cpu_t stepif_state;
 int stepif_display_mode;
@@ -187,6 +195,42 @@ int breakpoint_is_set(uint16_t addr) {
     if(rbfind((void*)&addr, stepif_breakpoints))
         return 1;
     return 0;
+}
+
+/**
+ * see if a file is writable, using select
+ */
+int is_writable(char *path) {
+    int fd;
+    fd_set writeset;
+    int retval;
+    struct timeval timeout;
+
+    fd = open(path, O_WRONLY | O_NONBLOCK);
+
+    /* this is really all I probably need */
+    if(fd < 0)
+        return 0;
+
+    FD_ZERO(&writeset);
+    FD_SET(fd, &writeset);
+
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 0;
+
+    while(((retval = select(FD_SETSIZE, NULL, &writeset, NULL, &timeout)) == -1) &&
+          ((errno == EAGAIN) || (errno == EINTR)));
+
+    if(retval == -1) {
+        perror("select");
+        close(fd);
+        return 0;
+    }
+
+    retval = FD_ISSET(fd, &writeset);
+    close(fd);
+
+    return retval;
 }
 
 void stepif_debug(int level, char *format, ...) {
@@ -1225,6 +1269,90 @@ void fkey_callback(int inchar) {
     tui_refresh(pdisplay);
 }
 
+
+void usage(char *a0) {
+    printf("Usage: %s [-c configfile] [-e]\n\n", a0);
+    printf("  -c <configfile>  configfile to use for the emulator\n");
+    printf("  -e               control the emulator as part of debugger\n");
+}
+
+/**
+ * start up the emulator, returning pid
+ * of the child process.  If it cannot
+ * be started, returns a pid of 0
+ *
+ * @param configfile for the emulator (-c option)
+ * @returns pid on success, 0 otherwise
+ */
+pid_t start_emu(char *configfile, char *cmd_path) {
+    pid_t pid;
+    int pipe_fd[2];
+
+    char *args[] = { "./emulator",
+                     "-c",
+                     configfile,
+                     "-s",
+                     NULL };
+
+    if (pipe(pipe_fd) == -1) {
+        perror("pipe");
+        exit(EXIT_FAILURE);
+    }
+
+    /* fork and dup and whatnot */
+    pid = fork();
+    if(!pid) { /* parent */
+        for(int x=0; x < 3; x++) {
+            close(x);
+        }
+
+        close(pipe_fd[PIPE_READ_FD]);
+        dup2(pipe_fd[PIPE_WRITE_FD], 1);
+        dup2(pipe_fd[PIPE_WRITE_FD], 2);
+
+        /* stdin/out/etc duped, let's exec! */
+        if(execvp("./emulator", args) == -1) {
+            perror("execvp");
+            exit(EXIT_FAILURE);
+        }
+
+        /* shouldn't get here */
+    }
+
+    /* wait for the command socket to become writable.
+     * monitor startup to see if we get a tty notification
+     */
+    close(pipe_fd[PIPE_WRITE_FD]);
+
+    for(int x = 0; x < 20; x++) {
+        if(is_writable(cmd_path))
+            return pid;
+
+        usleep(100000);
+    }
+
+    if(kill(pid, 0) != -1) {
+        /* child is running, cmd fifo isn't ready */
+        kill(pid, SIGTERM);
+    }
+
+    fprintf(stderr, "command buffer (%s) did not become writable\n", cmd_path);
+    exit(EXIT_FAILURE);
+}
+
+/**
+ * exit callback
+ */
+void stepif_exit_callback(void) {
+    int stat;
+
+    if(stepif_emu_pid) {
+        if(kill(stepif_emu_pid, 0) != -1)
+            kill(stepif_emu_pid, SIGTERM);
+        waitpid(stepif_emu_pid, &stat, 0);
+    }
+}
+
 /**
  * main
  */
@@ -1237,6 +1365,27 @@ int main(int argc, char *argv[]) {
     int result;
     dbg_command_t command;
     dbg_response_t response;
+
+    int control_emu = 0;
+    char *config_file = NULL;
+    int option;
+
+    while((option = getopt(argc, argv, "c:e")) != -1) {
+        switch(option) {
+        case 'c':
+            config_file = optarg;
+            break;
+
+        case 'e':
+            control_emu = 1;
+            break;
+
+        default:
+            usage(argv[0]);
+            exit(EXIT_FAILURE);
+        }
+    }
+
 
     stepif_watches = rbinit(addr_compare, NULL);
     stepif_breakpoints = rbinit(addr_compare, NULL);
@@ -1262,6 +1411,29 @@ int main(int argc, char *argv[]) {
     fifo = DEFAULT_FIFO;
 
     fifo_path = malloc(strlen(fifo) + 5);
+
+    strcpy(fifo_path, fifo);
+    strcat(fifo_path, "-cmd");
+
+    if(!is_writable(fifo_path)) {
+        if(!control_emu) {
+            fprintf(stderr, "Emulator not running.\n");
+            exit(EXIT_FAILURE);
+        } else {
+            stepif_emu_pid = start_emu(config_file, fifo_path);
+            if(!stepif_emu_pid) {
+                fprintf(stderr, "could not start emulator\n");
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
+
+    stepif_cmd_fd = open(fifo_path, O_RDWR);
+    if(stepif_cmd_fd == -1) {
+        perror("open");
+        exit(EXIT_FAILURE);
+    }
+
     strcpy(fifo_path, fifo);
     strcat(fifo_path, "-rsp");
 
@@ -1271,18 +1443,11 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    strcpy(fifo_path, fifo);
-    strcat(fifo_path, "-cmd");
-
-    stepif_cmd_fd = open(fifo_path, O_RDWR);
-    if(stepif_cmd_fd == -1) {
-        perror("open");
-        exit(EXIT_FAILURE);
-    }
-
     free(fifo_path);
 
     pscreen = tui_init(NULL, 1);
+    tui_set_exit_callback(stepif_exit_callback);
+
     pregisters = tui_window(pscreen->width - REGISTER_WIDTH, 0, REGISTER_WIDTH, REGISTER_HEIGHT, 1, "Registers", COLORSET_GREEN);
     pstack = tui_window(pscreen->width - REGISTER_WIDTH, REGISTER_HEIGHT, REGISTER_WIDTH, pscreen->height - (CMD_HEIGHT + 1) - REGISTER_HEIGHT, 1, "Stack", COLORSET_GREEN);
     pcommand = tui_window(0, pscreen->height - (CMD_HEIGHT + 1), pscreen->width, CMD_HEIGHT, 1, "Command", COLORSET_DEFAULT);
@@ -1338,5 +1503,13 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    memset((void*)&command, 0, sizeof(command));
+    memset((void*)&response, 0, sizeof(response));
+
+    command.cmd = CMD_STOP;
+
+    result = stepif_command(&command, NULL, &response, NULL);
+
+    /* atexit will reap the child */
     exit(EXIT_SUCCESS);
 }
