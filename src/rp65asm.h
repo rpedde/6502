@@ -16,8 +16,8 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef _COMPILER_H_
-#define _COMPILER_H_
+#ifndef _RP65ASM_H_
+#define _RP65ASM_H_
 
 #include "opcodes.h"
 
@@ -91,4 +91,4 @@ extern void yyerror(char *format, ...);
 #define OPCODE_NOTFOUND 0x0100
 extern uint16_t opcode_lookup(opdata_t *op, int fatal);
 
-#endif /* _COMPILER_H_ */
+#endif /* _RP65ASM_H_ */

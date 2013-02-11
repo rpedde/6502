@@ -22,7 +22,7 @@
 #include <string.h>
 
 #include "debug.h"
-#include "compiler.h"
+#include "rp65asm.h"
 #include "parser.h"
 #include "getopt.h"
 

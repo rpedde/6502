@@ -15,8 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _STEPIF_H_
-#define _STEPIF_H_
+#ifndef _RP65DBG_H_
+#define _RP65DBG_H_
 
 
-#endif /* _STEPIF_H_ */
+#endif /* _RP65DBG_H_ */

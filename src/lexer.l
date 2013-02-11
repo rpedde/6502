@@ -28,7 +28,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "compiler.h"
+#include "rp65asm.h"
 #include "debug.h"
 #include "parser.h"
 #include "opcodes.h"

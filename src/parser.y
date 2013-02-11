@@ -32,7 +32,7 @@
 #define _INCLUDE_OPCODE_MAP
 #include "opcodes.h"
 
-#include "compiler.h"
+#include "rp65asm.h"
 #include "debug.h"
 
 #define YERROR_VERBOSE 1

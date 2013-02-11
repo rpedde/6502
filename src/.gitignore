@@ -1,8 +1,8 @@
 *.o
 *~
-compiler
-emulator
-stepif
+rp65emu
+rp65dbg
+rp65asm
 lexer.c
 parser.c
 parser.h

@@ -44,6 +44,7 @@
 #define REGISTER_HEIGHT 10
 
 #define DEFAULT_FIFO "/tmp/debug"
+#define DEFAULT_EMU_PATH "./rp65emu"
 
 int stepif_cmd_fd = -1;
 int stepif_rsp_fd = -1;
@@ -1284,11 +1285,11 @@ void usage(char *a0) {
  * @param configfile for the emulator (-c option)
  * @returns pid on success, 0 otherwise
  */
-pid_t start_emu(char *configfile, char *cmd_path) {
+pid_t start_emu(char *configfile, char *cmd_path, char *emu_path) {
     pid_t pid;
     int pipe_fd[2];
 
-    char *args[] = { "./emulator",
+    char *args[] = { "rp65emu",
                      "-c",
                      configfile,
                      "-s",
@@ -1311,7 +1312,7 @@ pid_t start_emu(char *configfile, char *cmd_path) {
         dup2(pipe_fd[PIPE_WRITE_FD], 2);
 
         /* stdin/out/etc duped, let's exec! */
-        if(execvp("./emulator", args) == -1) {
+        if(execvp(emu_path, args) == -1) {
             perror("execvp");
             exit(EXIT_FAILURE);
         }
@@ -1359,7 +1360,8 @@ void stepif_exit_callback(void) {
 int main(int argc, char *argv[]) {
     char buffer[40];
     char *fifo;
-    char *fifo_path;
+    char *fifo_path = NULL;
+    char *emu_path = DEFAULT_EMU_PATH;
     int pos;
     int step_char;
     int result;
@@ -1370,13 +1372,15 @@ int main(int argc, char *argv[]) {
     char *config_file = NULL;
     int option;
 
-    while((option = getopt(argc, argv, "c:e")) != -1) {
+    while((option = getopt(argc, argv, "c:e:")) != -1) {
         switch(option) {
         case 'c':
             config_file = optarg;
+            control_emu = 1;
             break;
 
         case 'e':
+            emu_path = optarg;
             control_emu = 1;
             break;
 
@@ -1386,6 +1390,11 @@ int main(int argc, char *argv[]) {
         }
     }
 
+
+    if (control_emu && !config_file) {
+        fprintf(stderr, "must specify config file when starting emu\n");
+        exit(EXIT_FAILURE);
+    }
 
     stepif_watches = rbinit(addr_compare, NULL);
     stepif_breakpoints = rbinit(addr_compare, NULL);
@@ -1420,7 +1429,7 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Emulator not running.\n");
             exit(EXIT_FAILURE);
         } else {
-            stepif_emu_pid = start_emu(config_file, fifo_path);
+            stepif_emu_pid = start_emu(config_file, fifo_path, emu_path);
             if(!stepif_emu_pid) {
                 fprintf(stderr, "could not start emulator\n");
                 exit(EXIT_FAILURE);
