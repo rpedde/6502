@@ -183,7 +183,6 @@ uint8_t cpu_execute(void) {
         t81 = cpu_fetch();
         t82 = cpu_fetch();
         addr = cpu_makeword(t81, t82);
-        DPRINTF(DBG_INFO,"addr for absolute: $%04x\n", addr);
         break;
     default:
         DPRINTF(DBG_FATAL,"Unsupported indexing mode: %d\n", opmap->addressing_mode);
@@ -232,6 +231,7 @@ uint8_t cpu_execute(void) {
     case CPU_ADDR_MODE_IND_Y:
         addr = cpu_makeword(memory_read(addr),
                             memory_read(addr + 1)) + cpu_state.y;
+        INFO("Ind_Y addr: $%04x", addr);
         break;
 
     default:

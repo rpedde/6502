@@ -50,9 +50,9 @@ void step_return(uint8_t result, uint16_t retval, uint16_t len, uint8_t *data) {
     response.extra_len = len;
 
     write(step_rsp_fd, (char*)&response, sizeof(response));
-    DPRINTF(DBG_DEBUG, "Returning response: %s\n", result ? "Error" : "Success");
+    DEBUG("Returning response: %s", result ? "Error" : "Success");
     if(len) {
-        DPRINTF(DBG_DEBUG, "Returning %d bytes of extra data\n", len);
+        DEBUG("Returning %d bytes of extra data\n", len);
         write(step_rsp_fd, (char*) data, response.extra_len);
     }
 }
@@ -67,7 +67,7 @@ ssize_t readblock(int fd, void *buf, size_t size) {
          bytestoread > 0;
          bufp += bytesread, bytestoread -= bytesread) {
         bytesread = read(fd, bufp, bytestoread);
-        DPRINTF(DBG_DEBUG, "Read %d bytes\n", bytesread);
+        DEBUG("Read %d bytes", bytesread);
         if ((bytesread == 0) && (totalbytes == 0))
             return 0;
         if (bytesread == 0) {
@@ -105,7 +105,7 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
         start = cmd->param1;
         len = cmd->param2;
 
-        DPRINTF(DBG_DEBUG,"Attemping to read $%04x bytes from $%04x\n", len, start);
+        DEBUG("Attemping to read $%04x bytes from $%04x", len, start);
 
         memory = (uint8_t*)malloc(len);
         if(!memory) {
@@ -125,7 +125,7 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
         start = cmd->param1;
         len = cmd->extra_len;
 
-        DPRINTF(DBG_DEBUG, "Attempting to write $%04x bytes to $%04x\n", len, start);
+        DEBUG("Attempting to write $%04x bytes to $%04x", len, start);
 
         for(current = 0; current < len; current++) {
             memory_write(current + start, data[current]);
@@ -183,7 +183,7 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
         break;
 
     default:
-        DPRINTF(DBG_ERROR, "Unknown command from debugger: %d\n", cmd->cmd);
+        ERROR("Unknown command from debugger: %d", cmd->cmd);
         exit(EXIT_FAILURE);
     }
 }
@@ -205,16 +205,16 @@ void stepwise_debugger(char *fifo) {
 
     if((stat(fifo_path,&sb) == -1) && (errno == ENOENT)) {
         /* make it */
-        DPRINTF(DBG_DEBUG,"Creating fifo: %s\n",fifo_path);
+        DEBUG("Creating fifo: %s",fifo_path);
         mkfifo(fifo_path, 0600);
     } else {
         if(!(sb.st_mode & S_IFIFO)) {
-            DPRINTF(DBG_FATAL, "File '%s' exists, and is not a fifo\n", fifo);
+            FATAL("File '%s' exists, and is not a fifo", fifo);
             exit(EXIT_FAILURE);
         }
     }
 
-    DPRINTF(DBG_DEBUG,"Opening cmd fifo\n");
+    DEBUG("Opening cmd fifo");
     step_cmd_fd = open(fifo_path, O_RDWR);
     if(step_cmd_fd == -1) {
         perror("open");
@@ -226,34 +226,33 @@ void stepwise_debugger(char *fifo) {
 
     if((stat(fifo_path,&sb) == -1) && (errno == ENOENT)) {
         /* make it */
-        DPRINTF(DBG_DEBUG,"Creating fifo: %s\n",fifo_path);
+        DEBUG("Creating fifo: %s",fifo_path);
         mkfifo(fifo_path, 0600);
     } else {
         if(!(sb.st_mode & S_IFIFO)) {
-            DPRINTF(DBG_FATAL, "File '%s' exists, and is not a fifo\n", fifo);
+            FATAL("File '%s' exists, and is not a fifo", fifo);
             exit(EXIT_FAILURE);
         }
     }
 
-    DPRINTF(DBG_DEBUG,"Opening rsp fifo\n");
+    DEBUG("Opening rsp fifo");
     step_rsp_fd = open(fifo_path, O_RDWR);
     free(fifo_path);
 
-    DPRINTF(DBG_DEBUG, "Waiting for input\n");
+    DEBUG("Waiting for input");
 
     while(1) {
-
         bytes_read = readblock(step_cmd_fd, (char*) &cmd, sizeof(cmd));
         if(bytes_read != sizeof(cmd)) {
-            DPRINTF(DBG_FATAL, "Bad read.  Expecting %d, read %d\n",
-                    sizeof(cmd), bytes_read);
+            FATAL("Bad read.  Expecting %d, read %d",
+                  sizeof(cmd), bytes_read);
             exit(EXIT_FAILURE);
         }
 
-        DPRINTF(DBG_DEBUG, "Received command: %02x\n",cmd.cmd);
+        DEBUG("Received command: %02x",cmd.cmd);
 
         if(cmd.cmd == CMD_STOP) {
-            DPRINTF(DBG_INFO, "Exiting emulator at debugger request\n");
+            INFO("Exiting emulator at debugger request");
             step_return(RESPONSE_OK, 0, 0, NULL);
             return;
         }
@@ -262,7 +261,7 @@ void stepwise_debugger(char *fifo) {
         data = NULL;
 
         if(cmd.extra_len) {
-            DPRINTF(DBG_DEBUG, "Reading %d bytes of extra info\n", cmd.extra_len);
+            DEBUG("Reading %d bytes of extra info", cmd.extra_len);
             data = (uint8_t*)malloc(cmd.extra_len);
             if(!data) {
                 perror("malloc");
@@ -270,19 +269,19 @@ void stepwise_debugger(char *fifo) {
             }
 
             if(readblock(step_cmd_fd,data,cmd.extra_len) != cmd.extra_len) {
-                DPRINTF(DBG_FATAL,"Short read from remote debugger\n");
+                FATAL("Short read from remote debugger");
                 exit(EXIT_FAILURE);
             }
         }
 
-        DPRINTF(DBG_DEBUG, "Evaluating command\n");
+        DEBUG("Evaluating command");
         step_eval(&cmd, data);
 
         if(data) {
             free(data);
             data = NULL;
         }
-        DPRINTF(DBG_DEBUG, "Waiting for input\n");
+        DEBUG("Waiting for input");
     }
 
     close(step_cmd_fd);

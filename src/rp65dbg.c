@@ -637,14 +637,40 @@ void process_command(char *cmd) {
             break;
         }
 
-        command.cmd = CMD_LOAD;
-        command.param1 = (uint16_t)temp;
-        command.extra_len = strlen(argv[1]) + 1;
+        /* command.cmd = CMD_LOAD; */
+        /* command.param1 = (uint16_t)temp; */
+        /* command.extra_len = strlen(argv[1]) + 1; */
 
-        if((result = stepif_command(&command, (uint8_t*)argv[1], &response, &data)) == RESPONSE_OK) {
-            tui_putstring(pcommand, " Loaded\n",data);
+        /* if((result = stepif_command(&command, (uint8_t*)argv[1], &response, &data)) == RESPONSE_OK) { */
+        /*     tui_putstring(pcommand, " Loaded\n",data); */
+        /* } else { */
+        /*     tui_putstring(pcommand, " Error loading: %s\n",data); */
+        /* } */
+        FILE *infile;
+        size_t bytes_read;
+        char *extra_data=NULL;
+
+        infile = fopen(argv[1], "r");
+        if(!infile) {
+            tui_putstring(pcommand, " Error loading: %s\n", strerror(errno));
         } else {
-            tui_putstring(pcommand, " Error loading: %s\n",data);
+            data = malloc(1024);
+            tui_putstring(pcommand, " ");
+
+            while((bytes_read = fread(data, 1, 256, infile)) > 0) {
+                command.cmd = CMD_WRITEMEM;
+                command.param1 = temp;
+                command.extra_len = bytes_read;
+                stepif_command(&command, data, &response, &extra_data);
+                temp+= bytes_read;
+                tui_putstring(pcommand, ".");
+                if(extra_data) {
+                    free(extra_data);
+                    extra_data = NULL;
+                }
+            }
+            fclose(infile);
+            tui_putstring(pcommand, "\n Loaded file.\n");
         }
         break;
 

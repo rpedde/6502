@@ -39,6 +39,9 @@ typedef struct mem_remap_t {
 typedef struct hw_reg_t {
     int hw_family;
     uint8_t (*memop)(struct hw_reg_t *, uint16_t, uint8_t, uint8_t);
+    uint8_t (*eventloop)(void *, int);
+    int irq_asserted;
+    int nmi_asserted;
     void *state;
     int remapped_regions;
     mem_remap_t remap[];
@@ -53,5 +56,12 @@ typedef struct hw_config_t {
     int config_items;
     hw_config_item_t item[];
 } hw_config_t;
+
+typedef struct hw_callbacks_t {
+    void (*hw_logger)(int, char *, ...);
+    void (*irq_change)(void);
+    void (*nmi_change)(void);
+} hw_callbacks_t;
+
 
 #endif /* _HARDWARE_H_ */

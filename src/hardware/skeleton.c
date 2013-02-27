@@ -24,17 +24,21 @@
 #include "hardware.h"
 #include "hw-common.h"
 
-hw_reg_t *init(hw_config_t *config);
+hw_reg_t *init(hw_config_t *config, hw_callbacks_t *callbacks);
 uint8_t skeleton_memop(hw_reg_t *hw, uint16_t addr, uint8_t memop, uint8_t data);
 
 typedef struct skeleton_state_t {
 } skeleton_state_t;
 
-hw_reg_t *init(hw_config_t *config) {
+static hw_callbacks_t *hardware_callbacks;
+
+hw_reg_t *init(hw_config_t *config, hw_callbacks_t *callbacks) {
     hw_reg_t *skeleton_reg;
     uint16_t start;
     uint16_t end;
     skeleton_state_t *state;
+
+    hardware_callbacks = callbacks;
 
     skeleton_reg = malloc(sizeof(hw_reg_t) + sizeof(mem_remap_t));
     if(!skeleton_reg) {

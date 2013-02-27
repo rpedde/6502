@@ -113,6 +113,8 @@ void add_opdata(opdata_t *pnew) {
         exit(EXIT_FAILURE);
     }
 
+    pnewitem->next = NULL;
+
     pnewitem->data = pnew;
     list_tailp->next = pnewitem;
     list_tailp = pnewitem;

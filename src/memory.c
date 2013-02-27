@@ -33,15 +33,22 @@ typedef struct memory_list_t {
 } memory_list_t;
 
 memory_list_t memory_list;
+hw_callbacks_t callbacks;
 
 typedef struct module_list_t {
     char *module_name;
-    hw_reg_t *(*init)(hw_config_t *);
+    hw_reg_t *(*init)(hw_config_t *, hw_callbacks_t *callbacks);
     void *handle;
     struct module_list_t *pnext;
 } module_list_t;
 
 module_list_t memory_modules;
+
+/*
+ * forwards
+ */
+void memory_irq_change(void);
+void memory_nmi_change(void);
 
 module_list_t *get_load_module(const char *module) {
     module_list_t *pentry = memory_modules.pnext;
@@ -85,6 +92,10 @@ int memory_init(void) {
     memory_list.pnext = NULL;
     memory_modules.pnext = NULL;
 
+    callbacks.hw_logger = debug_printf;
+    callbacks.irq_change = memory_irq_change;
+    callbacks.nmi_change = memory_nmi_change;
+
     /* now we are free to load any memory modules from disk */
     return E_MEM_SUCCESS;
 }
@@ -116,7 +127,7 @@ uint8_t memory_read(uint16_t addr) {
         current = current->pnext;
     }
 
-    ERROR("No readable memory at addr %x\n", addr);
+    ERROR("No readable memory at addr %x", addr);
     return 0;
 }
 
@@ -138,14 +149,14 @@ void memory_write(uint16_t addr, uint8_t value) {
 
         current = current->pnext;
     }
-    ERROR("No writable memory at addr %x\n", addr);
+    ERROR("No writable memory at addr %x", addr);
 }
 
 int memory_load(const char *module, hw_config_t *config) {
     memory_list_t *modentry = NULL;
     module_list_t *pmodule = NULL;
 
-    DEBUG("Loading module %s\n", module);
+    DEBUG("Loading module %s", module);
 
     modentry = malloc(sizeof(memory_list_t));
     if(!modentry) {
@@ -156,21 +167,74 @@ int memory_load(const char *module, hw_config_t *config) {
     memset(modentry, 0x00, sizeof(modentry));
     pmodule = get_load_module(module);
 
-    modentry->hw_reg = pmodule->init(config);
+    modentry->hw_reg = pmodule->init(config, &callbacks);
 
     if(modentry->hw_reg == NULL) {
         FATAL("Module %s init failed", module);
         exit(1);
     }
 
-    DEBUG("Loaded module at 0x%x - 0x%x.  Read: %d, Write: %d\n",
+    DEBUG("Loaded module at 0x%x - 0x%x.  Read: %d, Write: %d, hw_reg: %p, eventloop: %p",
           modentry->hw_reg->remap[0].mem_start,
           modentry->hw_reg->remap[0].mem_end,
           modentry->hw_reg->remap[0].readable,
-          modentry->hw_reg->remap[0].writable);
+          modentry->hw_reg->remap[0].writable,
+          modentry->hw_reg,
+          modentry->hw_reg->eventloop);
 
     modentry->pnext = memory_list.pnext;
     memory_list.pnext = modentry;
 
     return E_MEM_SUCCESS;
+}
+
+/**
+ * set irq from a module
+ *
+ * this should really emulate common collector driven line
+ */
+void memory_irq_change(void) {
+}
+
+/**
+ * set nmi from a module
+ *
+ * this should really emulate common collector driven line
+ */
+void memory_nmi_change(void) {
+}
+
+/**
+ * see if there are any event loops on any of the registered
+ * memory devices
+ */
+int memory_has_eventloop(void) {
+    int count = 0;
+    memory_list_t *current = memory_list.pnext;
+    while(current) {
+        if(current->hw_reg->eventloop)
+            count++;
+        current = current->pnext;
+    }
+
+    return count;
+}
+
+/**
+ * run the event loops
+ */
+void memory_run_eventloop(void) {
+    int count = memory_has_eventloop();
+    memory_list_t *current = memory_list.pnext;
+
+    if(!count) {
+        sleep(1);
+    }
+
+    while(current) {
+        if(current->hw_reg->eventloop) {
+            current->hw_reg->eventloop(current->hw_reg->state, count > 1);
+        }
+        current = current->pnext;
+    }
 }

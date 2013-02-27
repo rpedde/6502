@@ -24,14 +24,16 @@
 #include "hardware.h"
 #include "hw-common.h"
 
-hw_reg_t *init(hw_config_t *config);
+hw_reg_t *init(hw_config_t *config, hw_callbacks_t *callbacks);
 uint8_t mem_memop(hw_reg_t *hw, uint16_t addr, uint8_t memop, uint8_t data);
 
 typedef struct mem_state_t {
     uint8_t *mem;
 } mem_state_t;
 
-hw_reg_t *init(hw_config_t *config) {
+static hw_callbacks_t *hardware_callbacks;
+
+hw_reg_t *init(hw_config_t *config, hw_callbacks_t *callbacks) {
     hw_reg_t *mem_reg;
     uint16_t start;
     uint16_t end;
@@ -40,13 +42,15 @@ hw_reg_t *init(hw_config_t *config) {
     char *backing_file;
     uint8_t writable = 1;
 
+    hardware_callbacks = callbacks;
+
     mem_reg = malloc(sizeof(hw_reg_t) + sizeof(mem_remap_t));
     if(!mem_reg) {
         perror("malloc");
         exit(1);
     }
 
-    memset(mem_reg, 0, sizeof(mem_reg));
+    memset(mem_reg, 0, sizeof(hw_reg_t));
 
     if(!config_get_uint16(config, "mem_start", &start))
         return NULL;

@@ -30,7 +30,7 @@
 
 #define UART_MAX_BUFFER 16
 
-hw_reg_t *init(hw_config_t *config);
+hw_reg_t *init(hw_config_t *config, hw_callbacks_t *callbacks);
 static uint8_t uart_memop(hw_reg_t *hw, uint16_t addr, uint8_t memop, uint8_t data);
 static void *listener_proc(void *arg);
 
@@ -61,12 +61,16 @@ static void unlock_state(uart_state_t *state);
 static void receive_byte(uart_state_t *state, uint8_t byte);
 static void recalculate_irq(uart_state_t *state);
 
-hw_reg_t *init(hw_config_t *config) {
+static hw_callbacks_t *hardware_callbacks;
+
+hw_reg_t *init(hw_config_t *config, hw_callbacks_t *callbacks) {
     hw_reg_t *uart_reg;
     uint16_t start;
     uint16_t end;
     uart_state_t *state;
     int ret;
+
+    hardware_callbacks = callbacks;
 
     uart_reg = malloc(sizeof(hw_reg_t) + sizeof(mem_remap_t));
     if(!uart_reg) {
