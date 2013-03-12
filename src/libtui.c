@@ -108,6 +108,7 @@ void tui_getstring(window_t *pwindow, char *buffer, int len,
             break;
         case 127:
         case 8:   /* delete */
+        case 0x107:
             if (current > buffer) {
                 current--;
                 wechochar(pwindow->pcwindow, 8);

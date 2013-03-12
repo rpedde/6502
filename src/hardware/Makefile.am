@@ -14,7 +14,7 @@ acia_6551_la_CPPFLAGS = -I..
 acia_6551_la_LDFLAGS = -module -avoid-version -shared -lpthread
 
 generic_video_la_SOURCES = generic-video.c hw-common.h hw-common.c ../hardware.h
-generic_video_la_CPPFLAGS = -I.. @libsdl_CFLAGS@ -framework SDL
+generic_video_la_CPPFLAGS = -I.. @libsdl_CFLAGS@
 generic_video_la_LDFLAGS = -module -avoid-version -shared @libsdl_LIBS@
 
 EXTRA_DIST = skeleton.c latin1-8x10.rom

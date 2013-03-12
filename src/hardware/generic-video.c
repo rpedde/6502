@@ -392,11 +392,13 @@ static void set_value_at_position(video_state_t *state,
     drect.w = CHARMAP_WIDTH;;
     drect.h = CHARMAP_HEIGHT * 2;
 
+#ifdef SDL2
     if(SDL_RenderCopy(state->renderer, state->texture,
                       &srect, &drect) < 0) {
         ERROR("SDL_RenderCopy: %s", SDL_GetError());
         exit(EXIT_FAILURE);
     }
+#endif
 }
 
 
@@ -444,11 +446,13 @@ static uint8_t video_eventloop(void *arg, int blocking) {
                 bg_color = &video_colors[state->color_register & 0x0f];
                 fg_color = &video_colors[(state->color_register & 0xf0) >> 4];
 
+#ifdef SDL2
                 SDL_SetRenderDrawColor(state->renderer, bg_color->r,
                                        bg_color->g, bg_color->b, 0xff);
                 SDL_RenderClear(state->renderer);
                 SDL_SetTextureColorMod(state->texture, fg_color->r,
                                        fg_color->g, fg_color->b);
+#endif
 
                 INFO("Sweeping screen");
                 int x;
@@ -462,7 +466,9 @@ static uint8_t video_eventloop(void *arg, int blocking) {
                     }
                 }
 
+#ifdef SDL2
                 SDL_RenderPresent(state->renderer);
+#endif
                 break;
             default:
                 INFO("Bad video mode on refresh");
