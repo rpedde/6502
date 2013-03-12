@@ -648,14 +648,13 @@ void process_command(char *cmd) {
         /* } */
         FILE *infile;
         size_t bytes_read;
-        char *extra_data=NULL;
+        uint8_t *extra_data=NULL;
 
         infile = fopen(argv[1], "r");
         if(!infile) {
             tui_putstring(pcommand, " Error loading: %s\n", strerror(errno));
         } else {
             data = malloc(1024);
-            tui_putstring(pcommand, " ");
 
             while((bytes_read = fread(data, 1, 256, infile)) > 0) {
                 command.cmd = CMD_WRITEMEM;
@@ -663,15 +662,33 @@ void process_command(char *cmd) {
                 command.extra_len = bytes_read;
                 stepif_command(&command, data, &response, &extra_data);
                 temp+= bytes_read;
-                tui_putstring(pcommand, ".");
                 if(extra_data) {
                     free(extra_data);
                     extra_data = NULL;
                 }
             }
             fclose(infile);
-            tui_putstring(pcommand, "\n Loaded file.\n");
+            tui_putstring(pcommand, " Loaded file.\n");
         }
+
+        /* check and see if we have a .dbg file for this */
+        char *basename = strdup(argv[1]);
+        char *dot;
+        if((dot=strrchr(basename, '.'))) {
+            *dot = '\0';
+            asprintf(&dot, "%s.%s", basename, "dbg");
+            if(debuginfo_load(dot)) {
+                tui_putstring(pcommand, " Loaded debug symbols\n");
+            } else {
+                tui_putstring(pcommand, " No debug symbols found\n");
+            }
+
+            free(dot);
+        }
+        free(basename);
+
+        if(stepif_display_mode == DISPLAY_MODE_DISASM)
+            tui_refresh(pdisplay);
         break;
 
     case TOK_SET:
