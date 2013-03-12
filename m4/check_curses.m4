@@ -20,14 +20,16 @@ AC_DEFUN([CHECK_LIBCURSES],
     fi
   fi
 
-  for i in /usr /usr/local /opt/local /opt; do
-    if test -f "$i/include/curses.h" -a -f "$i/lib/libcurses.la"; then
-      libcurses_CFLAGS="-I$i/include -L$i/lib"
-      libcurses_LIBS="-L$i/lib -lcurses"
+  if test x"$HAVE_LIBCURSES" = "x0"; then
+    for i in /usr /usr/local /opt/local /opt; do
+      if test -f "$i/include/curses.h" -a -f "$i/lib/libcurses.la"; then
+        libcurses_CFLAGS="-I$i/include -L$i/lib"
+        libcurses_LIBS="-L$i/lib -lcurses"
 
-      HAVE_LIBCURSES=1
-    fi
-  done
+        HAVE_LIBCURSES=1
+      fi
+    done
+  fi
 
   # Search the library and headers directly (last chance)
   if test x"$HAVE_LIBCURSES" = "x0"; then

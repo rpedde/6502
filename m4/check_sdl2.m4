@@ -11,31 +11,24 @@ AC_DEFUN([CHECK_LIBSDL2],
   if test x"$HAVE_LIBSDL" = "x0"; then
     if test x"$PKG_CONFIG" != "x"; then
       PKG_CHECK_MODULES([libsdl], [sdl2], [HAVE_LIBSDL=1], [HAVE_LIBSDL=0])
-      # if test x"$HAVE_FUSE" = "x1"; then
-      #   # if test x"$PKG_CONFIG_REQUIRES" != x""; then
-      #   #   PKG_CONFIG_REQUIRES="$PKG_CONFIG_REQUIRES,"
-      #   # fi
-      #   # PKG_CONFIG_REQUIRES="$PKG_CONFIG_REQUIRES lib"
-      # fi
     fi
   fi
 
-  for i in /usr /usr/local /opt/local /opt; do
-    if test -f "$i/include/SDL2/SDL.h" -a -f "$i/lib/libsdl2.la"; then
-      libsdl_CFLAGS="-I$i/include/SDL2 -L$i/lib"
-      libsdl_LIBS="-L$i/lib -lsdl2"
+  if test x"$HAVE_LIBSDL2" = "x0"; then
+    for i in /usr /usr/local /opt/local /opt; do
+      if test -f "$i/include/SDL2/SDL.h" -a -f "$i/lib/libsdl2.la"; then
+        libsdl_CFLAGS="-I$i/include/SDL2 -L$i/lib"
+        libsdl_LIBS="-L$i/lib -lsdl2"
 
-      HAVE_LIBSDL=1
-    fi
-  done
+        HAVE_LIBSDL=1
+      fi
+    done
+  fi
 
   # Search the library and headers directly (last chance)
   if test x"$HAVE_LIBSDL" = "x0"; then
-    AC_CHECK_HEADER(SDL2/SDL.h, [], [AC_MSG_ERROR([The libsdl headers are missing])])
-    AC_CHECK_LIB(sdl2, SDL_Init, [], [AC_MSG_ERROR([The libsdl library is missing])])
-
-    libsdl_LIBS="-L$i/lib -lsdl2"
-    HAVE_LIBSDL=1
+    AC_CHECK_HEADER(SDL2/SDL.h, [], [AC_MSG_NOTICE([The libsdl2 headers are missing])])
+    AC_CHECK_LIB(sdl2, SDL_Init, [ HAVE_LBISDL=1; libsdl_LIBS="-L$i/lib -lsdl2" ], [AC_MSG_NOTICE([The libsdl2 library is missing])])
   fi
 
   AC_SUBST(libsdl_LIBS)

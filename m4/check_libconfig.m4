@@ -20,14 +20,16 @@ AC_DEFUN([CHECK_LIBCONFIG],
     fi
   fi
 
-  for i in /usr /usr/local /opt/local /opt; do
-    if test -f "$i/include/libconfig.h" -a -f "$i/lib/libconfig.la"; then
-      libconfig_CFLAGS="-I$i/include -L$i/lib"
-      libconfig_LIBS="-L$i/lib -lconfig"
+  if test x"$HAVE_LIBCONFIG" = "x0"; then
+    for i in /usr /usr/local /opt/local /opt; do
+      if test -f "$i/include/libconfig.h" -a -f "$i/lib/libconfig.la"; then
+        libconfig_CFLAGS="-I$i/include -L$i/lib"
+        libconfig_LIBS="-L$i/lib -lconfig"
 
-      HAVE_LIBCONFIG=1
-    fi
-  done
+        HAVE_LIBCONFIG=1
+      fi
+    done
+  fi
 
   # Search the library and headers directly (last chance)
   if test x"$HAVE_LIBCONFIG" = "x0"; then

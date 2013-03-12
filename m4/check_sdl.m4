@@ -20,14 +20,16 @@ AC_DEFUN([CHECK_LIBSDL],
     fi
   fi
 
-  for i in /usr /usr/local /opt/local /opt; do
-    if test -f "$i/include/SDL/SDL.h" -a -f "$i/lib/libsdl.la"; then
-      libsdl_CFLAGS="-I$i/include/SDL -L$i/lib"
-      libsdl_LIBS="-L$i/lib -lsdl"
+  if test x"$HAVE_LIBSDL" = "x0"; then
+    for i in /usr /usr/local /opt/local /opt; do
+      if test -f "$i/include/SDL/SDL.h" -a -f "$i/lib/libsdl.la"; then
+        libsdl_CFLAGS="-I$i/include/SDL -L$i/lib"
+        libsdl_LIBS="-L$i/lib -lsdl"
 
-      HAVE_LIBSDL=1
-    fi
-  done
+        HAVE_LIBSDL=1
+      fi
+    done
+  fi
 
   # Search the library and headers directly (last chance)
   if test x"$HAVE_LIBSDL" = "x0"; then
