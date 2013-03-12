@@ -1,5 +1,4 @@
 config.*
-m4/*
 missing
 .deps
 Makefile
