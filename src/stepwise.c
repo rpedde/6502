@@ -52,7 +52,7 @@ void step_return(uint8_t result, uint16_t retval, uint16_t len, uint8_t *data) {
     write(step_rsp_fd, (char*)&response, sizeof(response));
     DEBUG("Returning response: %s", result ? "Error" : "Success");
     if(len) {
-        DEBUG("Returning %d bytes of extra data\n", len);
+        DEBUG("Returning %d bytes of extra data", len);
         write(step_rsp_fd, (char*) data, response.extra_len);
     }
 }

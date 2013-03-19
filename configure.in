@@ -52,12 +52,12 @@ AM_CONDITIONAL(PLATFORM_LINUX, test "x${is_linux}" = xyes)
 # Check libs
 CHECK_LIBCONFIG()
 CHECK_LIBCURSES()
+CHECK_LIBVNCSERVER()
 CHECK_LIBSDL2()
 
 if [[ "$HAVE_LIBSDL" = "0" ]]; then
    CHECK_LIBSDL()
 fi
-
 CFLAGS="$CFLAGS $libconfig_CFLAGS"
 LDFLAGS="$LDFLAGS $libconfig_LIBS"
 
