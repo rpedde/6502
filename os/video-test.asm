@@ -1,8 +1,10 @@
-                ;;
-                ;; Test of generic video driver
-                ;;
+        ;;
+        ;; Test of generic video driver
+        ;;
 
-                .org    $8000
+        ;; This fits in an 8k rom, from $E000 to $FFFF
+
+                .org    $E000
 
                 video_mode_reg = $DFFF
                 video_color = $DFFE
@@ -10,6 +12,7 @@
                 scratch1 = $10
                 scratch2 = $11
 
+reset_routine:
 start:
                 lda #$00
                 sta video_mode_reg
@@ -49,3 +52,13 @@ loop:
                 sta video_color
                 inx
                 jmp loop
+
+irq_routine:
+nmi_routine:
+                rti
+
+                .org $fffa
+
+v_nmi:          dw nmi_routine
+v_reset:        dw reset_routine
+v_irq:          dw irq_routine
