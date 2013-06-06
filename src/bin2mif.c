@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
         perror("open");
         exit(EXIT_FAILURE);
     }
-    fd_out = open(argv[2], O_WRONLY | O_CREAT);
+    fd_out = open(argv[2], O_WRONLY | O_CREAT, 0666);
 
     if(fd_out < 0) {
         perror("open");
