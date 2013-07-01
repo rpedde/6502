@@ -30,14 +30,15 @@
 #include "debug.h"
 #include "6502.h"
 #include "memory.h"
-
-#include <sys/stat.h>
+#include "redblack.h"
 
 #define DEFAULT_DEBUG_FIFO "/tmp/debug";
 #define VERSION "0.1"
 
 static int step_cmd_fd = -1;
 static int step_rsp_fd = -1;
+static struct rbtree *step_bp = NULL;
+static int step_run = 0;
 
 #define STEP_BAD_REG "Bad register specified"
 #define STEP_BAD_FILE "Cannot open file"
@@ -87,6 +88,7 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
     char *version = VERSION;
     uint8_t *memory;
     uint16_t start, len, current;
+    uint16_t *paddr = malloc(sizeof(uint16_t));
 
     switch(cmd->cmd) {
     case CMD_NOP:
@@ -179,6 +181,34 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
         break;
 
     case CMD_CAPS:
+        step_return(RESPONSE_OK, CAP_BP | CAP_RUN, 0, NULL);
+        break;
+
+    case CMD_BP:
+        if(!paddr) {
+            perror("malloc");
+            exit(EXIT_FAILURE);
+        }
+        *paddr = cmd->param2;
+
+        switch(cmd->param1) {
+        case PARAM_BP_SET:
+            rbsearch((void*)paddr, step_bp);
+            break;
+        case PARAM_BP_DEL:
+            rbdelete((void*)paddr, step_bp);
+            break;
+        }
+        step_return(RESPONSE_OK, 0, 0, NULL);
+        break;
+
+    case CMD_RUN:
+        step_run = 1;
+        step_return(RESPONSE_OK, 0, 0, NULL);
+        break;
+
+    case CMD_STOP:
+        step_run = 0;
         step_return(RESPONSE_OK, 0, 0, NULL);
         break;
 

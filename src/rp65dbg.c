@@ -121,6 +121,8 @@ char *tokens[] = {
     NULL
 };
 
+int stepif_command(dbg_command_t *command, uint8_t *out_data, dbg_response_t *retval, uint8_t **in_data);
+
 /**
  * malloc and exit on error
  */
@@ -182,14 +184,42 @@ int addr_compare(const void *a, const void *b, const void *config) {
     return 1;
 }
 
+int stepif_simple_command(uint8_t cmd, uint16_t param1,
+                          uint16_t param2, uint8_t *data,
+                          uint16_t len) {
+    dbg_command_t command;
+    dbg_response_t response;
+
+    command.cmd = cmd;
+    command.param1 = param1;
+    command.param2 = param2;
+    if(data) {
+        command.extra_len = len;
+    } else {
+        command.extra_len = 0;
+    }
+
+    return stepif_command(&command, data, &response, NULL);
+}
+
 void breakpoint_add(uint16_t addr) {
     uint16_t *paddr = error_malloc(sizeof(uint16_t));
+
     *paddr = addr;
     rbsearch((void*)paddr, stepif_breakpoints);
+
+    /* if we have emu support for offloaded breakpoints,
+       we need to push the breakpoint add to the
+       emulator */
+    if(stepif_remote_caps & CAP_BP)
+        stepif_simple_command(CMD_BP, PARAM_BP_SET, addr, NULL, 0);
 }
 
 void breakpoint_remove(uint16_t addr) {
     rbdelete((void*)&addr, stepif_breakpoints);
+
+    if(stepif_remote_caps & CAP_BP)
+        stepif_simple_command(CMD_BP, PARAM_BP_DEL, addr, NULL, 0);
 }
 
 int breakpoint_is_set(uint16_t addr) {
@@ -637,15 +667,6 @@ void process_command(char *cmd) {
             break;
         }
 
-        /* command.cmd = CMD_LOAD; */
-        /* command.param1 = (uint16_t)temp; */
-        /* command.extra_len = strlen(argv[1]) + 1; */
-
-        /* if((result = stepif_command(&command, (uint8_t*)argv[1], &response, &data)) == RESPONSE_OK) { */
-        /*     tui_putstring(pcommand, " Loaded\n",data); */
-        /* } else { */
-        /*     tui_putstring(pcommand, " Error loading: %s\n",data); */
-        /* } */
         FILE *infile;
         size_t bytes_read;
         uint8_t *extra_data=NULL;
@@ -805,6 +826,9 @@ void process_command(char *cmd) {
         break;
 
     case TOK_RUN:
+        if(stepif_remote_caps & CAP_RUN) {
+        }
+
         stepif_running = 1;
         /* turn off blocking getch so we can get chars when free-running */
         tui_window_nodelay(pcommand);

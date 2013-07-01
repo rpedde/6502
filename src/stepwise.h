@@ -74,6 +74,7 @@
 
 #define CAP_BP    0x01
 #define CAP_WATCH 0x02
+#define CAP_RUN   0x04
 
 /* Add and remove breakpoints
  */
@@ -81,6 +82,15 @@
 
 #define PARAM_BP_SET 0x01
 #define PARAM_BP_DEL 0x02
+
+/* free-run until breakpoint (or cmd_step)
+ */
+#define CMD_RUN  0x0A
+
+/* stop free-running, and go back to
+   stepwise execution */
+#define CMD_STEP 0x0B
+
 
 /* Terminate the emulator
  */
