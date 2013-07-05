@@ -4,7 +4,8 @@ AM_YFLAGS = -d
 bin_PROGRAMS = rp65emu rp65asm rp65dbg bin2mif
 
 rp65emu_SOURCES = 6502.c 6502.h debug.c debug.h emulator.c emulator.h \
-	 hardware.h memory.c memory.h opcodes.h stepwise.c stepwise.h
+	hardware.h memory.c memory.h opcodes.h stepwise.c stepwise.h \
+	redblack.c redblack.h
 
 rp65emu_LDFLAGS = -lpthread
 
