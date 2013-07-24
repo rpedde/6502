@@ -27,6 +27,8 @@ extern int config_get_uint16(hw_config_t *config, char *key, uint16_t *value);
 #define DBG_INFO  3
 #define DBG_DEBUG 4
 
+#define NOTIFY(format, args...) hardware_callbacks->hw_notify(format, ##args)
+
 #if defined(NDEBUG)
 #define DEBUG(format, args...)
 #define INFO(format, args...)

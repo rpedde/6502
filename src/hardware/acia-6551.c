@@ -110,7 +110,7 @@ hw_reg_t *init(hw_config_t *config, hw_callbacks_t *callbacks) {
     ret = grantpt(state->pty);
     if(ret) {
         perror("grantpt");
-        fprintf(stderr, "grantpt: %d\n", ret);
+        DEBUG("grantpt: %d", ret);
         return NULL;
     }
 
@@ -120,7 +120,8 @@ hw_reg_t *init(hw_config_t *config, hw_callbacks_t *callbacks) {
         return NULL;
     }
 
-    fprintf(stderr, "Opened pty for 6551 uart at %s\n", ptsname(state->pty));
+    INFO("Opened pty for 6551 uart at %s", ptsname(state->pty));
+    NOTIFY("Opened pty for 6551 uart at %s", ptsname(state->pty));
 
     /* now, start up an async listener thread */
     if(pthread_mutex_init(&state->state_lock, NULL) < 0) {
@@ -191,7 +192,7 @@ void receive_byte(uart_state_t *state, uint8_t byte) {
     if(((state->head_buffer_pos + 1) % UART_MAX_BUFFER) == state->tail_buffer_pos) {
         /* we just dropped a char */
         state->SR |= SR_OR;
-        fprintf(stderr, "just dropped byte\n");
+        INFO("just dropped byte");
     } else {
         state->buffer[state->head_buffer_pos] = byte;
         state->head_buffer_pos = (state->head_buffer_pos + 1) % UART_MAX_BUFFER;
@@ -225,12 +226,12 @@ void *listener_proc(void *arg) {
 
         if(res == 0) {
             /* file closed out from end of us */
-            fprintf(stderr, "EOF on pty\n");
+            WARN("EOF on pty");
             exit(EXIT_FAILURE);
         }
 
         receive_byte(state, byte);
-        fprintf(stderr, "got byte $%02x\n", byte);
+        DEBUG("got byte $%02x", byte);
     }
 }
 
@@ -256,7 +257,6 @@ uint8_t uart_memop(hw_reg_t *hw, uint16_t addr, uint8_t memop, uint8_t data) {
             if(state->head_buffer_pos == state->tail_buffer_pos) {
                 /* nothing in the buffer */
                 retval = 0;
-                /* fprintf(stderr, "read on empty fifo\n"); */
             } else {
                 retval = state->buffer[state->tail_buffer_pos];
                 state->tail_buffer_pos = (state->tail_buffer_pos + 1) % UART_MAX_BUFFER;

@@ -187,6 +187,7 @@ hw_reg_t *init(hw_config_t *config, hw_callbacks_t *callbacks) {
     state->screen->autoPort = TRUE;
     rfbInitServer(state->screen);
 
+    NOTIFY("Starting vnc server on port %d", state->screen->port);
     INFO("Starting vnc server on port %d", state->screen->port);
 
     /* and we'll kick off the event loop */
@@ -422,7 +423,7 @@ void *rfb_proc(void *arg) {
     vnc_state_t *state = (vnc_state_t*)arg;
 
     while(rfbIsActive(state->screen)) {
-        INFO("Tick");
+        /* INFO("Tick"); */
         rfbProcessEvents(state->screen, 1000);
     }
 
