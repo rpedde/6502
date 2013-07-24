@@ -91,12 +91,11 @@
    stepwise execution */
 #define CMD_STEP 0x0B
 
-
 /* Terminate the emulator
  */
 #define CMD_STOP     0xFF
 
-typedef struct dbg_command_t_struct {
+typedef struct dbg_command_t {
     uint8_t cmd;
     uint16_t param1;
     uint16_t param2;
@@ -111,12 +110,29 @@ typedef struct dbg_command_t_struct {
 #define RESPONSE_OK    0x00
 #define RESPONSE_ERROR 0x01
 
-typedef struct dbg_response_t_struct {
+typedef struct dbg_response_t {
     uint8_t response_status;
     uint16_t response_value;
     uint16_t extra_len;
 } dbg_response_t;
 
-extern void stepwise_debugger(char *fifo);
+/* reponse is literal string notification from emulator to
+ * whatever is driving the emulator.  This is typically information
+ * that must be passed -- vnc port, what pty, etc.
+ *
+ * param1 - unused
+ * param2 - unused
+ * extra_len - size of message (zero terminated string)
+ * extra_data - string message
+ */
+#define ASYNC_NOTIFICATION 0x00
+
+
+
+
+extern void stepwise_debugger(void);
+extern void stepwise_notification(char *format, ...);
+extern void step_init(char *fifo);
+
 
 #endif /* _STEPWISE_H_ */

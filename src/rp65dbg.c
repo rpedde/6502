@@ -48,6 +48,7 @@
 
 int stepif_cmd_fd = -1;
 int stepif_rsp_fd = -1;
+int stepif_asy_fd = -1;
 int stepif_debug_threshold = 2;
 int stepif_running = 0;
 int stepif_emu_pid = 0;
@@ -1421,13 +1422,37 @@ void stepif_exit_callback(void) {
     }
 }
 
+int stepif_open_fifo(char *base_path, char *extension) {
+    char *fifo_path = NULL;
+    int fd;
+
+    fifo_path = malloc(strlen(base_path) + strlen(extension) + 1);
+    if(!fifo_path) {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+
+    strcpy(fifo_path, base_path);
+    strcat(fifo_path, extension);
+
+    fd = open(fifo_path, O_RDWR);
+    free(fifo_path);
+
+    if(fd < 0) {
+        perror("open");
+        exit(EXIT_FAILURE);
+    }
+
+    return fd;
+}
+
+
 /**
  * main
  */
 int main(int argc, char *argv[]) {
     char buffer[40];
     char *fifo;
-    char *fifo_path = NULL;
     char *emu_path = DEFAULT_EMU_PATH;
     int pos;
     int step_char;
@@ -1486,7 +1511,12 @@ int main(int argc, char *argv[]) {
 
     fifo = DEFAULT_FIFO;
 
+    char *fifo_path;
     fifo_path = malloc(strlen(fifo) + 5);
+    if(!fifo_path) {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
 
     strcpy(fifo_path, fifo);
     strcat(fifo_path, "-cmd");
@@ -1504,22 +1534,11 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    stepif_cmd_fd = open(fifo_path, O_RDWR);
-    if(stepif_cmd_fd == -1) {
-        perror("open");
-        exit(EXIT_FAILURE);
-    }
-
-    strcpy(fifo_path, fifo);
-    strcat(fifo_path, "-rsp");
-
-    stepif_rsp_fd = open(fifo_path, O_RDWR);
-    if(stepif_rsp_fd == -1) {
-        perror("open");
-        exit(EXIT_FAILURE);
-    }
-
     free(fifo_path);
+
+    stepif_cmd_fd = stepif_open_fifo(fifo, "-cmd");
+    stepif_rsp_fd = stepif_open_fifo(fifo, "-rsp");
+    stepif_asy_fd = stepif_open_fifo(fifo, "-asy");
 
     pscreen = tui_init(NULL, 1);
     tui_set_exit_callback(stepif_exit_callback);

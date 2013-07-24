@@ -16,13 +16,14 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include <stdlib.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <unistd.h>
-#include <errno.h>
+#include <stdlib.h>
 #include <string.h>
-#include <fcntl.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -37,13 +38,17 @@
 
 static int step_cmd_fd = -1;
 static int step_rsp_fd = -1;
+static int step_asy_fd = -1;
+
 static struct rbtree *step_bp = NULL;
 static int step_run = 0;
 
 #define STEP_BAD_REG "Bad register specified"
 #define STEP_BAD_FILE "Cannot open file"
 
-void step_return(uint8_t result, uint16_t retval, uint16_t len, uint8_t *data) {
+
+void step_return(uint8_t result, uint16_t retval,
+                 uint16_t len, uint8_t *data) {
     dbg_response_t response;
 
     response.response_status = result;
@@ -56,6 +61,43 @@ void step_return(uint8_t result, uint16_t retval, uint16_t len, uint8_t *data) {
         DEBUG("Returning %d bytes of extra data", len);
         write(step_rsp_fd, (char*) data, response.extra_len);
     }
+}
+
+void step_send_async(uint8_t message, uint16_t param1,
+                     uint16_t param2, uint16_t len,
+                     uint8_t *data) {
+    dbg_command_t cmd;
+
+    cmd.cmd = message;
+    cmd.param1 = param1;
+    cmd.param2 = param2;
+    cmd.extra_len = len;
+    DEBUG("Sending async cmd %d", cmd.cmd);
+
+    write(step_asy_fd, (char*)&cmd, sizeof(cmd));
+    if(len) {
+        DEBUG("Writing %d bytes of extra data", len);
+        write(step_asy_fd, (char*)data, cmd.extra_len);
+    }
+}
+
+/*
+ * FIXME(rp): this should probably be serialized
+ */
+void stepwise_notification(char *format, ...) {
+    char *buffer = NULL;
+
+    va_list args;
+    va_start(args, format);
+    vasprintf(&buffer, format, args);
+    va_end(args);
+
+    /* send it out! */
+    step_send_async(ASYNC_NOTIFICATION, 0, 0, strlen(buffer) + 1,
+                    (uint8_t*) buffer);
+
+    if(buffer)
+        free(buffer);
 }
 
 ssize_t readblock(int fd, void *buf, size_t size) {
@@ -218,56 +260,59 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
     }
 }
 
-
-void stepwise_debugger(char *fifo) {
+int make_fifo(char *base, char *extension) {
+    char *file;
     struct stat sb;
-    dbg_command_t cmd;
-    uint8_t *data = NULL;
-    ssize_t bytes_read;
-    char *fifo_path;
+    int fd = -1;
 
-    if(!fifo)
-        fifo = DEFAULT_DEBUG_FIFO;
+    if(!base)
+        base = DEFAULT_DEBUG_FIFO;
 
-    fifo_path = malloc(strlen(fifo) + 5);
-    strcpy(fifo_path, fifo);
-    strcat(fifo_path, "-cmd");
+    file = malloc(strlen(base) + 5);
+    if(!file) {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
 
-    if((stat(fifo_path,&sb) == -1) && (errno == ENOENT)) {
+    strcpy(file, base);
+    strcat(file, extension);
+
+    if((stat(file, &sb) == -1) && (errno == ENOENT)) {
         /* make it */
-        DEBUG("Creating fifo: %s",fifo_path);
-        mkfifo(fifo_path, 0600);
+        DEBUG("Creating fifo: %s", file);
+        mkfifo(file, 0600);
     } else {
         if(!(sb.st_mode & S_IFIFO)) {
-            FATAL("File '%s' exists, and is not a fifo", fifo);
+            FATAL("File '%s' exists, and is not a fifo", file);
             exit(EXIT_FAILURE);
         }
     }
 
     DEBUG("Opening cmd fifo");
-    step_cmd_fd = open(fifo_path, O_RDWR);
-    if(step_cmd_fd == -1) {
+    fd = open(file, O_RDWR);
+    if(fd == -1) {
         perror("open");
         exit(EXIT_FAILURE);
     }
 
-    strcpy(fifo_path, fifo);
-    strcat(fifo_path, "-rsp");
+    free(file);
 
-    if((stat(fifo_path,&sb) == -1) && (errno == ENOENT)) {
-        /* make it */
-        DEBUG("Creating fifo: %s",fifo_path);
-        mkfifo(fifo_path, 0600);
-    } else {
-        if(!(sb.st_mode & S_IFIFO)) {
-            FATAL("File '%s' exists, and is not a fifo", fifo);
-            exit(EXIT_FAILURE);
-        }
-    }
+    return fd;
+}
 
-    DEBUG("Opening rsp fifo");
-    step_rsp_fd = open(fifo_path, O_RDWR);
-    free(fifo_path);
+void step_init(char *fifo) {
+    DEBUG("Initializing fds");
+
+    step_cmd_fd = make_fifo(fifo, "-cmd");
+    step_rsp_fd = make_fifo(fifo, "-rsp");
+    step_asy_fd = make_fifo(fifo, "-asy");
+}
+
+
+void stepwise_debugger(void) {
+    dbg_command_t cmd;
+    uint8_t *data = NULL;
+    ssize_t bytes_read;
 
     DEBUG("Waiting for input");
 

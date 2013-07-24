@@ -26,6 +26,7 @@
 #include "debug.h"
 #include "emulator.h"
 #include "memory.h"
+#include "stepwise.h" // what if we aren't running stepwise? - notifications
 
 typedef struct memory_list_t {
     hw_reg_t *hw_reg;
@@ -93,6 +94,7 @@ int memory_init(void) {
     memory_modules.pnext = NULL;
 
     callbacks.hw_logger = debug_printf;
+    callbacks.hw_notify = stepwise_notification;
     callbacks.irq_change = memory_irq_change;
     callbacks.nmi_change = memory_nmi_change;
 

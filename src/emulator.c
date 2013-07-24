@@ -174,6 +174,9 @@ int main(int argc, char *argv[]) {
     }
 
 
+    if(step)
+        step_init(NULL);
+
     memory_init();
     if(!load_memory())
         exit(EXIT_FAILURE);
@@ -211,6 +214,6 @@ static void *stepwise_proc(void *arg) {
     int *running = (int*) arg;
 
     *running = 1;
-    stepwise_debugger(NULL);
+    stepwise_debugger();
     *running = 0;
 }

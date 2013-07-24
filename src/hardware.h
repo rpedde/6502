@@ -59,6 +59,7 @@ typedef struct hw_config_t {
 
 typedef struct hw_callbacks_t {
     void (*hw_logger)(int, char *, ...);
+    void (*hw_notify)(char *, ...);
     void (*irq_change)(void);
     void (*nmi_change)(void);
 } hw_callbacks_t;
