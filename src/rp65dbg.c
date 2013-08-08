@@ -277,6 +277,64 @@ void stepif_debug(int level, char *format, ...) {
 }
 
 /**
+ * make a fd blocking or non-blocking
+ */
+void fd_blocking(int fd, int blocking) {
+    int flags = fcntl(fd, F_GETFL, 0);
+    flags = blocking ? flags & ~O_NONBLOCK : flags | O_NONBLOCK;
+    fcntl(fd, F_SETFL, flags);
+}
+
+/**
+ * read an async message
+ */
+int stepif_process_message(int fd) {
+    dbg_command_t cmd;
+    ssize_t bytes_read;
+    uint8_t *extra_data = NULL;
+
+    bytes_read = read(fd, (char *)&cmd, sizeof(dbg_command_t));
+    if(bytes_read != sizeof(dbg_command_t)) {
+        stepif_debug(D_DEBUG, "Expecting to read %d bytes, read %d\n",
+                     sizeof(dbg_command_t), bytes_read);
+        return RESPONSE_ERROR;
+    }
+
+    if(cmd.extra_len) {
+        extra_data = malloc(cmd.extra_len);
+        if(!extra_data) {
+            perror("malloc");
+            exit(EXIT_FAILURE);
+        }
+
+        bytes_read = read(fd, (char*)extra_data, cmd.extra_len);
+        if(bytes_read != cmd.extra_len) {
+            stepif_debug(D_DEBUG, "Expecting to read %d bytes, read %d\n",
+                         cmd.extra_len, bytes_read);
+            return RESPONSE_ERROR;
+        }
+    }
+
+    switch(cmd.cmd) {
+    case ASYNC_NOTIFICATION:
+        tui_putstring(pcommand, " %s\n", extra_data);
+        break;
+    default:
+        stepif_debug(D_DEBUG, "Bad async command: %d\n",
+                     cmd.cmd);
+        if(extra_data)
+            free(extra_data);
+        return RESPONSE_ERROR;
+        break;
+    }
+
+    if(extra_data)
+        free(extra_data);
+
+    return RESPONSE_OK;
+}
+
+/**
  * eval a string, using current radix, or looking it up
  * as a symbol
  */
@@ -1567,6 +1625,14 @@ int main(int argc, char *argv[]) {
     }
 
     stepif_remote_caps = response.response_value;
+
+    tui_putstring(pcommand, " Remote caps: %04X\n", stepif_remote_caps);
+
+    /* this is kind of lame, but let's walk through and read off all
+     * the async events */
+    fd_blocking(stepif_asy_fd, 0);
+    while(stepif_process_message(stepif_asy_fd) == RESPONSE_OK);
+    fd_blocking(stepif_asy_fd, 1);
 
     /* start running the step loop */
     while(1) {

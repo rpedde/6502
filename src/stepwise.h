@@ -95,7 +95,7 @@
  */
 #define CMD_STOP     0xFF
 
-typedef struct dbg_command_t {
+typedef struct __attribute__((packed)) dbg_command_t {
     uint8_t cmd;
     uint16_t param1;
     uint16_t param2;
@@ -110,7 +110,7 @@ typedef struct dbg_command_t {
 #define RESPONSE_OK    0x00
 #define RESPONSE_ERROR 0x01
 
-typedef struct dbg_response_t {
+typedef struct __attribute__((packed)) dbg_response_t {
     uint8_t response_status;
     uint16_t response_value;
     uint16_t extra_len;
@@ -126,8 +126,6 @@ typedef struct dbg_response_t {
  * extra_data - string message
  */
 #define ASYNC_NOTIFICATION 0x00
-
-
 
 
 extern void stepwise_debugger(void);
