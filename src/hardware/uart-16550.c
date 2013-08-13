@@ -16,12 +16,13 @@
  */
 
 #include <errno.h>
+#include <fcntl.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
-#include <fcntl.h>
+#include <termios.h>
 #include <unistd.h>
 
 #include "hardware.h"
@@ -69,6 +70,8 @@ hw_reg_t *init(hw_config_t *config, hw_callbacks_t *callbacks) {
     uint16_t end;
     uart_state_t *state;
     int ret;
+    int raw;
+    struct termios pty_termios;
 
     hardware_callbacks = callbacks;
 
@@ -82,6 +85,9 @@ hw_reg_t *init(hw_config_t *config, hw_callbacks_t *callbacks) {
 
     if(!config_get_uint16(config, "mem_start", &start))
         return NULL;
+
+    if(!config_get_bool(config, "raw", &raw))
+        raw = 1;
 
     end = start + 8;
 
@@ -99,6 +105,8 @@ hw_reg_t *init(hw_config_t *config, hw_callbacks_t *callbacks) {
         perror("malloc");
         exit(1);
     }
+
+    memset(state, 0, sizeof(uart_state_t));
 
     /* init the state */
     uart_reg->state = state;
@@ -121,6 +129,12 @@ hw_reg_t *init(hw_config_t *config, hw_callbacks_t *callbacks) {
     if(ret) {
         perror("unlockpt");
         return NULL;
+    }
+
+    if(raw) {
+        tcgetattr(state->pty, &pty_termios);
+        cfmakeraw(&pty_termios);
+        tcsetattr(state->pty, TCSANOW, &pty_termios);
     }
 
     INFO("Opened pty for 16550 uart at %s", ptsname(state->pty));
@@ -283,6 +297,8 @@ uint8_t uart_memop(hw_reg_t *hw, uint16_t addr, uint8_t memop, uint8_t data) {
             }
 
             /* write to THR -- drop the byte out the pts */
+            DEBUG("Writing byte %02X to pty", data);
+
             write(state->pty, &data, 1);
         }
         break;

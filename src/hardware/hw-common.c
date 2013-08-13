@@ -38,6 +38,24 @@ char *config_get(hw_config_t *config, char *key) {
     return NULL;
 }
 
+int config_get_bool(hw_config_t *config, char *key, int *value) {
+    char *str_value;
+
+    str_value = config_get(config, key);
+    if(!str_value)
+        return 0;
+
+    if(strcasecmp(key, "true") == 0) {
+        *value = 1;
+    } else if(strcastcmp(key, "yes") == 0) {
+        *value = 1;
+    } else {
+        *value = 0;
+    }
+
+    return 1;
+}
+
 int config_get_uint16(hw_config_t *config, char *key, uint16_t *value) {
     char *str_value;
     char *fmt = "%d";

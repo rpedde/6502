@@ -20,6 +20,7 @@
 
 extern char *config_get(hw_config_t *config, char *key);
 extern int config_get_uint16(hw_config_t *config, char *key, uint16_t *value);
+extern int config_get_bool(hw_config_t *config, char *key, int *value);
 
 #define DBG_FATAL 0
 #define DBG_ERROR 1
