@@ -1509,9 +1509,10 @@ int stepif_open_fifo(char *base_path, char *extension) {
  * main
  */
 int main(int argc, char *argv[]) {
-    char buffer[40];
+    char buffer[80];
     char *fifo;
     char *emu_path = DEFAULT_EMU_PATH;
+    char *startup_script = NULL;
     int pos;
     int step_char;
     int result;
@@ -1522,7 +1523,7 @@ int main(int argc, char *argv[]) {
     char *config_file = NULL;
     int option;
 
-    while((option = getopt(argc, argv, "c:e:")) != -1) {
+    while((option = getopt(argc, argv, "c:e:s:")) != -1) {
         switch(option) {
         case 'c':
             config_file = optarg;
@@ -1532,6 +1533,10 @@ int main(int argc, char *argv[]) {
         case 'e':
             emu_path = optarg;
             control_emu = 1;
+            break;
+
+        case 's':
+            startup_script = optarg;
             break;
 
         default:
@@ -1633,6 +1638,23 @@ int main(int argc, char *argv[]) {
     fd_blocking(stepif_asy_fd, 0);
     while(stepif_process_message(stepif_asy_fd) == RESPONSE_OK);
     fd_blocking(stepif_asy_fd, 1);
+
+
+    /* run the startup script */
+    if(startup_script) {
+        FILE *ss = fopen(startup_script, "r");
+        if(!ss) {
+            tui_putstring(pcommand, " Error reading opening startup script\n");
+        } else {
+            while(fgets(buffer, sizeof(buffer), ss)) {
+                while(buffer[strlen(buffer) - 1] == '\n')
+                    buffer[strlen(buffer) - 1] = '\0';
+                tui_putstring(pcommand, " > %s\n", buffer);
+                process_command(buffer);
+            }
+            fclose(ss);
+        }
+    }
 
     /* start running the step loop */
     while(1) {
