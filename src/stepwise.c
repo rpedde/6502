@@ -361,4 +361,5 @@ void stepwise_debugger(void) {
 
     close(step_cmd_fd);
     close(step_rsp_fd);
+    close(step_asy_fd);
 }
