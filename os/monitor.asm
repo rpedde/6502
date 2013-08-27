@@ -6,8 +6,21 @@
         ;;
 
 
-uart = $bc00
-cmd_max = 2
+uart            = $bc00
+regtable        = $e0
+cmd_max         = 2
+scratchmem      = $d0
+
+        ;; regtable holds the breakpoint table as well as
+        ;; the register data
+        ;;
+        ;; regtable + 0 : A
+        ;; regtable + 1 : X
+        ;; regtable + 2 : Y
+        ;; regtable + 3 : SP
+        ;; regtable + 4 : P
+        ;; regtable + 5 : IP
+        ;; regtable + 7,8,9 : IP save data
 
         .org    $e000
 
@@ -68,18 +81,64 @@ cmd_ping:
         ;;   uint8_t - A
         ;;   uint8_t - X
         ;;   uint8_t - Y
-        ;;   uint8_t - S
-        ;;   uint8_t - D
-        ;;   uint16_t - PC
+        ;;   uint8_t - SP
+        ;;   uint8_t - P
+        ;;   uint16_t - IP
+cmd_getreg:
+        lda     regtable
+        sta     scratchmem
+
+        lda     #$00
+        sta     scratchmem + 1
+
+        lda     #$07
+        sta     scratchmem + 2
+
+        jmp     util_sendblock
+
+        ;; Command:
+        ;;  2 - Get Data (cmd_getdata)
+        ;;
+        ;; Extra parameters:
+        ;;   uint16_t - addr (little endian)
+        ;;   uint8_t - len
+        ;;
+        ;; Response:
+        ;;   uint8_t * len
+        ;;
+        ;; Destroys:
+        ;;   A, Y
+cmd_getdata:
+        jsr     uart_in         ; set up parameters
+        sta     scratchmem
+
+        jsr     uart_in
+        sta     scratchmem + 1
+
+        jsr     uart_in
+        beq     c2l2            ; don't emit anything on zero length
+
+        sta     scratchmem + 2
+
+util_sendblock:
+        ldy     #$00
+
+c2l1:
+        lda     (scratchmem), y
+        jsr     uart_out
+        iny
+
+        cpy     scratchmem + 2
+        bne     c2l1
+
+c2l2:
+        jmp     mainloop
 
         ;; uart_out
         ;;
         ;; send a character out the uart.  this should really
         ;; do hardware or software handshaking.
         ;;
-cmd_getreg:
-        jmp     mainloop
-
 uart_out:
         sta     uart
         rts
@@ -110,3 +169,4 @@ uart_in:
 cmd_jumptable:
         .dw     cmd_ping - 1
         .dw     cmd_getreg - 1
+        .dw     cmd_getdata - 1

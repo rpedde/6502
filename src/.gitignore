@@ -3,6 +3,7 @@
 rp65emu
 rp65dbg
 rp65asm
+rp65mon
 bin2mif
 lexer.c
 parser.c
