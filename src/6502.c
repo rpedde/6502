@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <memory.h>
 #include <string.h>
+#include <time.h>
 
 #include "emulator.h"
 #include "memory.h"
@@ -157,6 +158,7 @@ uint8_t cpu_execute(void) {
     uint8_t t81, t82;     /* temp 8 bit numbers */
     uint16_t t161, t162;  /* temp 16 bit numbers */
     int16_t ts161, ts162; /* temp 16 bit signed number */
+    struct timespec rqtp;
 
     opcode = cpu_fetch();
     opmap = &cpu_opcode_map[opcode];
@@ -532,6 +534,13 @@ uint8_t cpu_execute(void) {
         break;
 
     case CPU_OPCODE_NOP:
+        /* there should probably be an undoc opcode
+           for waiting until an irq, but we'll just
+           sleep a bit on a nop, to keep my laptop
+           from overheating.  :p */
+        rqtp.tv_sec = 0;
+        rqtp.tv_nsec = 100000000;  /* .1 sec */
+        nanosleep(&rqtp, NULL);
         break;
 
     case CPU_OPCODE_ORA:

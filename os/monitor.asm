@@ -161,8 +161,12 @@ uart_init:
 uart_in:
         lda     uart + 5
         and     #$01
-        beq     uart_in
+        bne     UIL1
 
+        nop
+        jmp     uart_in
+
+UIL1:
         lda     uart
         rts
 
