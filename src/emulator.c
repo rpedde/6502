@@ -39,6 +39,7 @@ config_t main_config;
 static void *stepwise_proc(void *arg);
 
 #define DEFAULT_CONFIG_FILE "emulator.conf"
+#define DEFAULT_DEBUG_FIFO "/tmp/debug"
 
 int load_memory(void) {
     config_setting_t *pmemory;
@@ -137,13 +138,14 @@ int load_memory(void) {
 
 int main(int argc, char *argv[]) {
     char *configfile = DEFAULT_CONFIG_FILE;
+    char *base_path = DEFAULT_DEBUG_FIFO;
     int option;
     int step = 0;
     int debuglevel = 2;
     pthread_t run_tid;
     int running=1;
 
-    while((option = getopt(argc, argv, "d:sc:")) != -1) {
+    while((option = getopt(argc, argv, "d:sc:b:")) != -1) {
         switch(option) {
         case 'd':
             debuglevel = atoi(optarg);
@@ -151,6 +153,10 @@ int main(int argc, char *argv[]) {
 
         case 'c':
             configfile = optarg;
+            break;
+
+        case 'b':
+            base_path = optarg;
             break;
 
         case 's':
@@ -172,7 +178,6 @@ int main(int argc, char *argv[]) {
               config_error_text(&main_config));
         exit(EXIT_FAILURE);
     }
-
 
     if(step)
         step_init(NULL);
@@ -216,4 +221,6 @@ static void *stepwise_proc(void *arg) {
     *running = 1;
     stepwise_debugger();
     *running = 0;
+
+    return running;
 }

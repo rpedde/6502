@@ -41,8 +41,8 @@ static int step_rsp_fd = -1;
 static int step_asy_fd = -1;
 static int step_dbg_fd = -1;
 
-static struct rbtree *step_bp = NULL;
-static int step_run = 0;
+/* static struct rbtree *step_bp = NULL; */
+/* static int step_run = 0; */
 
 #define STEP_BAD_REG "Bad register specified"
 #define STEP_BAD_FILE "Cannot open file"
@@ -57,17 +57,21 @@ uint8_t *mon_request(uint8_t *data, int len, int resp_len) {
     uint8_t *result = NULL;
     uint8_t ir;
 
+    DEBUG("Sending %d bytes (monitor cmd $%02X)", len, data[0]);
     if(write(step_dbg_fd, data, len) != len) {
         FATAL("Error writing to debug fd: %s", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
-    if((read(step_dbg_fd, ir, 1) != 1) || (ir == 0)) {
+    DEBUG("Reading intermediate result");
+    if((read(step_dbg_fd, &ir, 1) != 1) || (ir == 0)) {
         FATAL("Error reading ir result: %s", strerror(errno));
         exit(EXIT_FAILURE);
     }
+    DEBUG("IR success");
 
     if(resp_len) {
+        DEBUG("Allocating %d bytes of reponse data", resp_len);
         if((result = (uint8_t*)malloc(resp_len + 1)) == NULL) {
             FATAL("Malloc");
             exit(EXIT_FAILURE);
@@ -75,12 +79,14 @@ uint8_t *mon_request(uint8_t *data, int len, int resp_len) {
 
         memset(result, 0, resp_len + 1);
 
+        DEBUG("Reading %d bytes of reponse data", resp_len);
         if(read(step_dbg_fd, result, resp_len) != resp_len) {
             FATAL("Error reading from debug fd: %s", strerror(errno));
             exit(EXIT_FAILURE);
         }
     }
 
+    DEBUG("Returning result");
     return result;
 }
 
@@ -166,20 +172,22 @@ ssize_t readblock(int fd, void *buf, size_t size) {
 void step_eval(dbg_command_t *cmd, uint8_t *data) {
     char *version = VERSION;
     uint8_t *reply_data, *memory;
-    uint16_t start, len, current;
-    uint16_t *paddr = malloc(sizeof(uint16_t));
+    uint16_t start, len;
 
     switch(cmd->cmd) {
     case CMD_NOP:
+        DEBUG("Debugger request: CMD_NOP");
         step_return(RESPONSE_OK, 0, 0, NULL);
         break;
 
     case CMD_VER:
+        DEBUG("Debugger request: CMD_VER");
         step_return(RESPONSE_OK, 0, strlen(version)+1,(uint8_t*)version);
         break;
 
     case CMD_REGS:
-        reply_data = mon_request("\1", 1, 7);
+        DEBUG("Debugger request: CMD_REGS");
+        reply_data = mon_request((uint8_t*)"\1", 1, 7);
         cpu_state.a = reply_data[0];
         cpu_state.x = reply_data[1];
         cpu_state.y = reply_data[2];
@@ -192,6 +200,7 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
         break;
 
     case CMD_READMEM:
+        DEBUG("Debugger request: CMD_READMEM");
         start = cmd->param1;
         len = cmd->param2;
 
@@ -426,6 +435,7 @@ void usage(void) {
     printf("rp65mon <options>\n\n");
     printf("Valid Options:\n");
     printf("-d <debuglevel>      debug level (0-5, 5 most verbose)\n");
+    printf("-b <path>            base fifo path\n");
     printf("-p <path>            path to serial device\n");
 }
 
@@ -436,17 +446,21 @@ void usage(void) {
  */
 int main(int argc, char *argv[]) {
     int option;
-    char path = NULL;
+    char *path = NULL;
+    char *base_path = DEFAULT_DEBUG_FIFO;
     int debuglevel = DBG_WARN;
     struct termios pty_termios;
 
-    while((option = getopt(argc, argv, "d:p:")) != -1) {
+    while((option = getopt(argc, argv, "d:p:b:")) != -1) {
         switch(option) {
         case 'd':
             debuglevel = atoi(optarg);
             break;
         case 'p':
             path = optarg;
+            break;
+        case 'b':
+            base_path = optarg;
             break;
         default:
             usage();
@@ -460,25 +474,24 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    debug_level(debuglevel);
+
+    DEBUG("Opening monitor fd");
     if((step_dbg_fd = open(path, O_RDWR)) == -1) {
         perror("open");
         exit(EXIT_FAILURE);
     }
 
+    DEBUG("Termioing monitor fd");
     tcgetattr(step_dbg_fd, &pty_termios);
     cfmakeraw(&pty_termios);
     tcsetattr(step_dbg_fd, TCSANOW, &pty_termios);
 
-    debug_level(debuglevel);
-    step_init(NULL);
+    DEBUG("Initializing debug fifos");
+    step_init(base_path);
 
     DEBUG("Testing connection to monitor");
-    uint8_t *data = mon_request("\0", 1, 0);
-    if(data[0] != 1) {
-        FATAL("Error in ping request");
-        exit(EXIT_FAILURE);
-    }
-    free(data);
+    mon_request((uint8_t*)"\0", 1, 0);
     DEBUG("Connection established");
 
     stepwise_debugger();

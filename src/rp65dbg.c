@@ -1510,8 +1510,8 @@ int stepif_open_fifo(char *base_path, char *extension) {
  */
 int main(int argc, char *argv[]) {
     char buffer[80];
-    char *fifo;
     char *emu_path = DEFAULT_EMU_PATH;
+    char *base_path = DEFAULT_FIFO;
     char *startup_script = NULL;
     int pos;
     int step_char;
@@ -1523,7 +1523,7 @@ int main(int argc, char *argv[]) {
     char *config_file = NULL;
     int option;
 
-    while((option = getopt(argc, argv, "c:e:s:")) != -1) {
+    while((option = getopt(argc, argv, "c:e:s:b:")) != -1) {
         switch(option) {
         case 'c':
             config_file = optarg;
@@ -1537,6 +1537,10 @@ int main(int argc, char *argv[]) {
 
         case 's':
             startup_script = optarg;
+            break;
+
+        case 'b':
+            base_path = optarg;
             break;
 
         default:
@@ -1572,16 +1576,14 @@ int main(int argc, char *argv[]) {
     for(pos = ' '; pos <= '~'; pos++)
         xlat[pos] = pos;
 
-    fifo = DEFAULT_FIFO;
-
     char *fifo_path;
-    fifo_path = malloc(strlen(fifo) + 5);
+    fifo_path = malloc(strlen(base_path) + 5);
     if(!fifo_path) {
         perror("malloc");
         exit(EXIT_FAILURE);
     }
 
-    strcpy(fifo_path, fifo);
+    strcpy(fifo_path, base_path);
     strcat(fifo_path, "-cmd");
 
     if(!is_writable(fifo_path)) {
@@ -1599,9 +1601,9 @@ int main(int argc, char *argv[]) {
 
     free(fifo_path);
 
-    stepif_cmd_fd = stepif_open_fifo(fifo, "-cmd");
-    stepif_rsp_fd = stepif_open_fifo(fifo, "-rsp");
-    stepif_asy_fd = stepif_open_fifo(fifo, "-asy");
+    stepif_cmd_fd = stepif_open_fifo(base_path, "-cmd");
+    stepif_rsp_fd = stepif_open_fifo(base_path, "-rsp");
+    stepif_asy_fd = stepif_open_fifo(base_path, "-asy");
 
     pscreen = tui_init(NULL, 1);
     tui_set_exit_callback(stepif_exit_callback);
