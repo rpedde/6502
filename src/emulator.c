@@ -124,7 +124,7 @@ int load_memory(void) {
         }
 
         /* now, let's load it */
-        memory_load(module, hw_config);
+        memory_load(name, module, hw_config);
 
         if (hw_config) {
             free(hw_config);

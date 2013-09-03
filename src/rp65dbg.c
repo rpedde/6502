@@ -122,6 +122,13 @@ char *tokens[] = {
     NULL
 };
 
+typedef struct emu_hardware_t {
+    char *serial_path;
+    char *vnc_port;
+} emu_hardware_t;
+
+emu_hardware_t hwinfo = { NULL, NULL };
+
 int stepif_command(dbg_command_t *command, uint8_t *out_data, dbg_response_t *retval, uint8_t **in_data);
 
 /**
@@ -318,6 +325,20 @@ int stepif_process_message(int fd) {
     switch(cmd.cmd) {
     case ASYNC_NOTIFICATION:
         tui_putstring(pcommand, " %s\n", extra_data);
+        break;
+    case ASYNC_HWNOTIFY:
+        switch(cmd.param1) {
+        case HW_TYPE_SERIAL: /* serial */
+            hwinfo.serial_path = strdup((char*)extra_data);
+            break;
+        case HW_TYPE_VNC: /* vnc */
+            hwinfo.vnc_port = strdup((char*)extra_data);
+            break;
+        default: /* ?? */
+            break;
+        }
+
+        tui_refresh(tui_getstatusbar());
         break;
     default:
         stepif_debug(D_DEBUG, "Bad async command: %d\n",
@@ -973,7 +994,6 @@ void process_command(char *cmd) {
     util_dispose_split(argv);
 }
 
-
 void display_update_dump(void) {
     int result;
     dbg_command_t command;
@@ -1264,6 +1284,29 @@ void display_update(void) {
 }
 
 /**
+ * statusbar_update
+ *
+ * update the status bar.  This will contain
+ * hardware details we are interested in
+ * (serial port, etc)
+ */
+void statusbar_update(void) {
+    window_t *statusbar = tui_getstatusbar();
+
+    tui_setpos(statusbar, 0, 0);
+    /* tui_cleareol(statusbar); */
+
+    tui_putstring(statusbar, " Ready | ");
+    if (hwinfo.serial_path) {
+        tui_putstring(statusbar, "Com: %s | ", hwinfo.serial_path);
+    }
+
+    if(hwinfo.vnc_port) {
+        tui_putstring(statusbar, "VNC: %s | ", hwinfo.vnc_port);
+    }
+}
+
+/**
  * update the register window
  *
  */
@@ -1549,7 +1592,6 @@ int main(int argc, char *argv[]) {
         }
     }
 
-
     if (control_emu && !config_file) {
         fprintf(stderr, "must specify config file when starting emu\n");
         exit(EXIT_FAILURE);
@@ -1616,6 +1658,7 @@ int main(int argc, char *argv[]) {
     tui_window_callback(pregisters, register_update);
     tui_window_callback(pstack, stack_update);
     tui_window_callback(pdisplay, display_update);
+    tui_window_callback(tui_getstatusbar(), statusbar_update);
 
     tui_inputwindow(pcommand);
 
@@ -1641,6 +1684,9 @@ int main(int argc, char *argv[]) {
     while(stepif_process_message(stepif_asy_fd) == RESPONSE_OK);
     fd_blocking(stepif_asy_fd, 1);
 
+    tui_putstring(pcommand, " refreshing statusbar...");
+    tui_refresh(tui_getstatusbar());
+    tui_putstring(pcommand, " done\n");
 
     /* run the startup script */
     if(startup_script) {

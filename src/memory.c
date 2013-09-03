@@ -154,7 +154,7 @@ void memory_write(uint16_t addr, uint8_t value) {
     ERROR("No writable memory at addr %x", addr);
 }
 
-int memory_load(const char *module, hw_config_t *config) {
+int memory_load(const char *name, const char *module, hw_config_t *config) {
     memory_list_t *modentry = NULL;
     module_list_t *pmodule = NULL;
 
@@ -184,8 +184,17 @@ int memory_load(const char *module, hw_config_t *config) {
           modentry->hw_reg,
           modentry->hw_reg->eventloop);
 
+    modentry->hw_reg->name = strdup(name);
+
     modentry->pnext = memory_list.pnext;
     memory_list.pnext = modentry;
+
+    /* we should pop out a notify at this point */
+    if(modentry->hw_reg->descr) {
+        step_send_async(ASYNC_HWNOTIFY, modentry->hw_reg->hw_family,
+                        0, strlen(modentry->hw_reg->descr) + 1,
+                        modentry->hw_reg->descr);
+    }
 
     return E_MEM_SUCCESS;
 }

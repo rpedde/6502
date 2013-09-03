@@ -37,6 +37,8 @@ typedef struct mem_remap_t {
 } mem_remap_t;
 
 typedef struct hw_reg_t {
+    char *name;
+    char *descr;
     int hw_family;
     uint8_t (*memop)(struct hw_reg_t *, uint16_t, uint8_t, uint8_t);
     uint8_t (*eventloop)(void *, int);

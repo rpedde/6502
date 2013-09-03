@@ -33,7 +33,7 @@ extern void memory_deinit(void);
 
 extern uint8_t memory_read(uint16_t addr);
 extern void memory_write(uint16_t addr, uint8_t data);
-extern int memory_load(const char *module, hw_config_t *config);
+extern int memory_load(const char *name, const char *module, hw_config_t *config);
 extern void memory_run_eventloop(void);
 
 #endif /* _MEMORY_H_ */

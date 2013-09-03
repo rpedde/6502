@@ -137,8 +137,10 @@ hw_reg_t *init(hw_config_t *config, hw_callbacks_t *callbacks) {
         tcsetattr(state->pty, TCSANOW, &pty_termios);
     }
 
-    INFO("Opened pty for 16550 uart at %s", ptsname(state->pty));
-    NOTIFY("Opened pty for 16550 uart at %s", ptsname(state->pty));
+    uart_reg->descr = strdup(ptsname(state->pty));
+
+    INFO("Opened pty for 16550 uart at %s", uart_reg->descr);
+    NOTIFY("Opened pty for 16550 uart at %s", uart_reg->descr);
 
     /* now, start up an async listener thread */
     if(pthread_mutex_init(&state->state_lock, NULL) < 0) {

@@ -80,6 +80,10 @@ window_t *tui_init(char *title, int statusbar) {
     return tui_rootwindow;
 }
 
+window_t *tui_getstatusbar(void) {
+    return tui_statusbar;
+}
+
 void tui_getstring(window_t *pwindow, char *buffer, int len,
                    void(*callback)(int)) {
     int inchar;
@@ -278,7 +282,7 @@ window_t *tui_window(int x, int y, int width, int height, int border,
 void tui_refresh(window_t *pwindow) {
     char *buffer;
 
-    if((pwindow->border)  && (pwindow->fullrefresh)){
+    if((pwindow->border) && (pwindow->fullrefresh)){
         wattron(pwindow->borderwindow,COLOR_PAIR(pwindow->borderpair));
 
         werase(pwindow->borderwindow);

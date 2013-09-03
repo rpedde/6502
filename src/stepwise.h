@@ -125,7 +125,19 @@ typedef struct __attribute__((packed)) dbg_response_t {
  * extra_len - size of message (zero terminated string)
  * extra_data - string message
  */
+
 #define ASYNC_NOTIFICATION 0x00
+
+/* hwnotify lets the emulator know about interesting
+ * hardware devices.
+ *
+ * param1 is hardware type notified about, the
+ * passed data is string in extra data.
+ */
+#define HW_TYPE_VNC    0x01
+#define HW_TYPE_SERIAL 0x04
+
+#define ASYNC_HWNOTIFY     0x01
 
 
 extern void stepwise_debugger(void);

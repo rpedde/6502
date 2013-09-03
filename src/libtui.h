@@ -47,6 +47,8 @@ typedef struct window_t_struct {
 
 extern window_t *tui_init(char *title, int statusbar);
 extern window_t *tui_window(int x, int y, int width, int height, int border, char *title, int colorset);
+extern window_t *tui_getstatusbar(void);
+
 extern void tui_inputwindow(window_t *pwindow);
 extern void tui_refresh(window_t *pwindow);
 extern void tui_getstring(window_t *pwindow, char *buffer, int len,
