@@ -119,7 +119,7 @@ hw_reg_t *init(hw_config_t *config, hw_callbacks_t *callbacks) {
     if(!(video_rom = config_get(config, "video_rom")))
         return NULL;
 
-    vnc_reg->hw_family = HW_FAMILY_IO;
+    vnc_reg->hw_family = HW_FAMILY_VIDEO;
     vnc_reg->memop = vnc_memop;
     vnc_reg->remapped_regions = 1;
 
@@ -187,8 +187,10 @@ hw_reg_t *init(hw_config_t *config, hw_callbacks_t *callbacks) {
     state->screen->autoPort = TRUE;
     rfbInitServer(state->screen);
 
-    NOTIFY("Starting vnc server on port %d", state->screen->port);
-    INFO("Starting vnc server on port %d", state->screen->port);
+    asprintf(&vnc_reg->descr, "port %d", state->screen->port);
+
+    NOTIFY("Starting vnc server on %s", vnc_reg->descr);
+    INFO("Starting vnc server on %s", vnc_reg->descr);
 
     /* and we'll kick off the event loop */
     if(pthread_create(&state->event_tid, NULL, rfb_proc, state) < 0) {
