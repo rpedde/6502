@@ -56,6 +56,8 @@ cpu_t cpu_state;
 uint8_t *mon_request(uint8_t *data, int len, int resp_len) {
     uint8_t *result = NULL;
     uint8_t ir;
+    uint8_t *current;
+    ssize_t bytes_read;
 
     DEBUG("Sending %d bytes (monitor cmd $%02X)", len, data[0]);
     if(write(step_dbg_fd, data, len) != len) {
@@ -80,9 +82,20 @@ uint8_t *mon_request(uint8_t *data, int len, int resp_len) {
         memset(result, 0, resp_len + 1);
 
         DEBUG("Reading %d bytes of reponse data", resp_len);
-        if(read(step_dbg_fd, result, resp_len) != resp_len) {
-            FATAL("Error reading from debug fd: %s", strerror(errno));
-            exit(EXIT_FAILURE);
+
+        current = result;
+
+        while(resp_len) {
+            bytes_read = read(step_dbg_fd, current, resp_len);
+            if(bytes_read > 0) {
+                current += bytes_read;
+                resp_len -= bytes_read;
+
+                DEBUG("Read %d bytes", bytes_read);
+            } else {
+                FATAL("Error reading from debug fd: %s", strerror(errno));
+                exit(EXIT_FAILURE);
+            }
         }
     }
 
@@ -193,7 +206,7 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
         cpu_state.y = reply_data[2];
         cpu_state.sp = reply_data[3];
         cpu_state.p = reply_data[4];
-        cpu_state.ip = reply_data[5] << 8 | reply_data[6];
+        cpu_state.ip = reply_data[6] << 8 | reply_data[5];
         free(reply_data);
 
         step_return(RESPONSE_OK, 0, sizeof(cpu_t),(uint8_t*)&cpu_state);
@@ -205,8 +218,9 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
         len = cmd->param2;
 
         uint8_t req_data[4];
-        int requested_len;
+        uint8_t requested_len;
         uint8_t *pmemory;
+        int len_left = len;
 
         DEBUG("Attemping to read $%04x bytes from $%04x", len, start);
 
@@ -219,21 +233,29 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
         pmemory = memory;
 
         /* we break this up into multiple blocks of FF or less */
-        while(len) {
-            requested_len = len;
-            if(requested_len > 0xff)
-                requested_len = 0xff;
+        while(len_left) {
+            if(len_left > 255) {
+                requested_len = 255;
+            } else {
+                requested_len = len_left;
+            }
 
             req_data[0] = 2;
             req_data[1] = (uint8_t)(start & 0xff);
             req_data[2] = (uint8_t)(start >> 8);
-            req_data[3] = (uint8_t)len;
+            req_data[3] = (uint8_t)requested_len;
+
+            DEBUG("READ_MEM Request:  %02X %02X %02X",
+                  (uint8_t)(start & 0xFF),
+                  (uint8_t)(start >> 8),
+                  (uint8_t)requested_len);
 
             reply_data = mon_request(req_data, 4, requested_len);
 
-            len -= requested_len;
+            len_left -= requested_len;
             memcpy(pmemory, reply_data, requested_len);
             pmemory += requested_len;
+            start += requested_len;
 
             free(reply_data);
         }
@@ -491,7 +513,7 @@ int main(int argc, char *argv[]) {
     step_init(base_path);
 
     DEBUG("Testing connection to monitor");
-    mon_request((uint8_t*)"\0", 1, 0);
+    mon_request((uint8_t*)"\0", 1, 1);
     DEBUG("Connection established");
 
     stepwise_debugger();

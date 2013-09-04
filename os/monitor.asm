@@ -8,7 +8,7 @@
 
 uart            = $bc00
 regtable        = $e0
-cmd_max         = 2
+cmd_max         = 3
 scratchmem      = $d0
 
         ;; regtable holds the breakpoint table as well as
@@ -26,6 +26,15 @@ scratchmem      = $d0
 
 start:
         jsr     uart_init
+        lda     #$ff
+        sta     regtable + 3
+        php
+        pla
+        sta     regtable + 4
+        lda     #$00
+        sta     regtable + 5
+        lda     #$e0
+        sta     regtable + 6
 
 mainloop:
         jsr     uart_in
@@ -85,7 +94,7 @@ cmd_ping:
         ;;   uint8_t - P
         ;;   uint16_t - IP
 cmd_getreg:
-        lda     regtable
+        lda     #regtable
         sta     scratchmem
 
         lda     #$00

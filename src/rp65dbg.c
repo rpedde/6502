@@ -1608,8 +1608,8 @@ int main(int argc, char *argv[]) {
 
     stepif_display_mode = DISPLAY_MODE_DUMP;
 
-    stepif_disassemble_addr = 0x8000;
-    stepif_dump_addr = 0x8000;
+    stepif_disassemble_addr = 0xE000;
+    stepif_dump_addr = 0xE000;
     stepif_watch_addr = 0;
 
     stepif_display_track = 1;

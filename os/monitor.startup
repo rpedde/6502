@@ -1,4 +1,3 @@
-# startup script for emu6502
 load ../os/monitor.bin $e000
 set ip $e000
 disasm $e000
