@@ -3,7 +3,9 @@
         ;;
 
 
-        ;;
+        ;; pad this out into a whole 8k rom
+        .org    $e000
+        .db     $ea
 
 
 uart            = $bc00
@@ -22,8 +24,9 @@ scratchmem      = $d0
         ;; regtable + 5 : IP
         ;; regtable + 7,8,9 : IP save data
 
-        .org    $e000
+        .org    $f800
 
+reset_vector:
 start:
         jsr     uart_init
         lda     #$ff
@@ -280,9 +283,29 @@ uil1:
         lda     uart
         rts
 
+        ;; we'll need to flesh these out once we
+        ;; have single stepping that is brk driven
+
+nmi_vector:
+irq_vector:
+        rti
+
+
 cmd_jumptable:
         .dw     cmd_ping - 1
         .dw     cmd_getreg - 1
         .dw     cmd_getdata - 1
         .dw     cmd_setreg - 1
         .dw     cmd_setdata - 1
+
+        ;;
+        ;; reset/nmi jump table
+        ;;
+
+        .org $fffa
+v_nmi:
+        dw      nmi_vector
+v_reset:
+        dw      reset_vector
+v_irq:
+        dw      irq_vector

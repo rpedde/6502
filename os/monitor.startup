@@ -1,5 +1,5 @@
 load ../os/monitor.bin $e000
-set ip $e000
-disasm $e000
+set ip $f800
+disasm $f800
 follow
 run
