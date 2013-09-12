@@ -220,6 +220,7 @@ c4out:
         ;; do hardware or software handshaking.
         ;;
 uart_out:
+        pha
         lda     uart + 5
         and     #$20            ; Transmit reg empty
         bne     uol1
@@ -228,6 +229,7 @@ uart_out:
         jmp     uart_out
 
 uol1:
+        pla
         sta     uart
         rts
 
