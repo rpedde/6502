@@ -55,7 +55,7 @@
 #define LSR_PE      0x04 /* parity error */
 #define LSR_FE      0x08 /* framing error */
 #define LSR_BI      0x10 /* break interrupt */
-#define LSR_THRE    0x20 /* transmittter holding register */
+#define LSR_THRE    0x20 /* transmitter holding register */
 #define LSR_TEMT    0x40 /* transmitter empty */
 #define LSR_ERF     0x80 /* error in recvr fifo */
 

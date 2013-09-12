@@ -109,6 +109,8 @@ hw_reg_t *init(hw_config_t *config, hw_callbacks_t *callbacks) {
     memset(state, 0, sizeof(uart_state_t));
 
     /* init the state */
+    state->LSR = LSR_TEMT | LSR_THRE;
+
     uart_reg->state = state;
 
     /* set up the pty */
@@ -305,7 +307,7 @@ uint8_t uart_memop(hw_reg_t *hw, uint16_t addr, uint8_t memop, uint8_t data) {
         }
         break;
 
-    case 1: /* IER, DLM */
+    case REG_IER: /* IER, DLM */
         if(dlab) {
             if(read)
                 return state->DLM;
@@ -317,25 +319,25 @@ uint8_t uart_memop(hw_reg_t *hw, uint16_t addr, uint8_t memop, uint8_t data) {
         }
         break;
 
-    case 2: /* IIR, FCR */
+    case REG_IIR: /* IIR, FCR */
         if(read)
             return state->IIR;
         state->FCR = data;
         break;
 
-    case 3:
+    case REG_LCR:
         if(read)
             return state->LCR;
         state->LCR = data;
         break;
 
-    case 4:
+    case REG_MCR:
         if(read)
             return state->MCR;
         state->MCR = data;
         break;
 
-    case 5:
+    case REG_LSR:
         if(read) {
             /* error flags reset on read */
             lock_state(state);
@@ -344,7 +346,7 @@ uint8_t uart_memop(hw_reg_t *hw, uint16_t addr, uint8_t memop, uint8_t data) {
             unlock_state(state);
             return retval;
         }
-        state->LSR = data;
+        /* can't write LSR */
         break;
 
     case 6:
