@@ -41,6 +41,8 @@ static int step_rsp_fd = -1;
 static int step_asy_fd = -1;
 static int step_dbg_fd = -1;
 
+static int regs_valid = 0;
+
 /* static struct rbtree *step_bp = NULL; */
 /* static int step_run = 0; */
 
@@ -182,6 +184,41 @@ ssize_t readblock(int fd, void *buf, size_t size) {
     return totalbytes;
 }
 
+void get_regs(void) {
+    uint8_t *reply_data;
+
+    if(!regs_valid) {
+        reply_data = mon_request((uint8_t*)"\1", 1, 7);
+        cpu_state.a = reply_data[0];
+        cpu_state.x = reply_data[1];
+        cpu_state.y = reply_data[2];
+        cpu_state.sp = reply_data[3];
+        cpu_state.p = reply_data[4];
+        cpu_state.ip = reply_data[6] << 8 | reply_data[5];
+        free(reply_data);
+
+        regs_valid = 1;
+    }
+}
+
+void set_regs(void) {
+    uint8_t cpu_data[8];
+    uint8_t *reply_data;
+
+    cpu_data[0] = 3;
+    cpu_data[1] = cpu_state.a;
+    cpu_data[2] = cpu_state.x;
+    cpu_data[3] = cpu_state.y;
+    cpu_data[4] = cpu_state.sp;
+    cpu_data[5] = cpu_state.p;
+    cpu_data[6] = (uint8_t)(cpu_state.ip & 0xff);
+    cpu_data[7] = (uint8_t)(cpu_state.ip >> 8);
+
+    reply_data = mon_request((uint8_t*)cpu_data, 8, 1);
+
+    free(reply_data);
+}
+
 void step_eval(dbg_command_t *cmd, uint8_t *data) {
     char *version = VERSION;
     uint8_t *reply_data, *memory;
@@ -200,15 +237,7 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
 
     case CMD_REGS:
         DEBUG("Debugger request: CMD_REGS");
-        reply_data = mon_request((uint8_t*)"\1", 1, 7);
-        cpu_state.a = reply_data[0];
-        cpu_state.x = reply_data[1];
-        cpu_state.y = reply_data[2];
-        cpu_state.sp = reply_data[3];
-        cpu_state.p = reply_data[4];
-        cpu_state.ip = reply_data[6] << 8 | reply_data[5];
-        free(reply_data);
-
+        get_regs();
         step_return(RESPONSE_OK, 0, sizeof(cpu_t),(uint8_t*)&cpu_state);
         break;
 
@@ -278,30 +307,34 @@ void step_eval(dbg_command_t *cmd, uint8_t *data) {
         break;
 
     case CMD_SET:
-        /* switch(cmd->param1) { */
-        /* case PARAM_A: */
-        /*     cpu_state.a = cmd->param2; */
-        /*     break; */
-        /* case PARAM_X: */
-        /*     cpu_state.x = cmd->param2; */
-        /*     break; */
-        /* case PARAM_Y: */
-        /*     cpu_state.y = cmd->param2; */
-        /*     break; */
-        /* case PARAM_P: */
-        /*     cpu_state.p = cmd->param2; */
-        /*     break; */
-        /* case PARAM_SP: */
-        /*     cpu_state.sp = cmd->param2; */
-        /*     break; */
-        /* case PARAM_IP: */
-        /*     cpu_state.ip = cmd->param2; */
-        /*     break; */
-        /* default: */
-        /*     step_return(RESPONSE_ERROR, 0, strlen(STEP_BAD_REG) + 1, */
-        /*                 (uint8_t*)STEP_BAD_REG); */
-        /*     return; */
-        /* } */
+        get_regs();
+
+        switch(cmd->param1) {
+        case PARAM_A:
+            cpu_state.a = cmd->param2;
+            break;
+        case PARAM_X:
+            cpu_state.x = cmd->param2;
+            break;
+        case PARAM_Y:
+            cpu_state.y = cmd->param2;
+            break;
+        case PARAM_P:
+            cpu_state.p = cmd->param2;
+            break;
+        case PARAM_SP:
+            cpu_state.sp = cmd->param2;
+            break;
+        case PARAM_IP:
+            cpu_state.ip = cmd->param2;
+            break;
+        default:
+            step_return(RESPONSE_ERROR, 0, strlen(STEP_BAD_REG) + 1,
+                        (uint8_t*)STEP_BAD_REG);
+            return;
+        }
+
+        set_regs();
 
         step_return(RESPONSE_OK, 0, 0, NULL);
         break;
